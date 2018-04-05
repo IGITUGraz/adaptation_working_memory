@@ -301,7 +301,7 @@ ALIFStateTuple = namedtuple('ALIFState', (
 
 
 class ALIF(LIF):
-    def __init__(self, n_in, n_rec, tau=20, thr=0.03,
+    def __init__(self, n_in, n_rec, tau=20, thr=0.01,
                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
                  tau_adaptation=200., beta=1.6,
                  rewiring_connectivity=-1, dampening_factor=0.3,
