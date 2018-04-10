@@ -101,34 +101,6 @@ input_spikes = tf.placeholder(dtype=tf.float32, shape=(FLAGS.n_batch, None, FLAG
 targets = tf.placeholder(dtype=tf.int64, shape=(FLAGS.n_batch,),
                          name='Targets')  # Lists of target characters of the recall task
 
-def find_onset_offset(y, threshold):
-    """
-    Given the input signal `y` with samples,
-    find the indices where `y` increases and descreases through the value `threshold`.
-    Return cked binary arrays of shape `y` indicating onset and offset threshold crossings.
-
-    `y` must be 1-D numpy arrays.
-    """
-    if threshold == 1:
-        equal = y == threshold
-        transition_touch = np.where(equal)[0]
-        touch_spikes = np.zeros_like(y)
-        touch_spikes[transition_touch] = 1
-        return np.expand_dims(touch_spikes, axis=0)
-    else:
-        # Find where y crosses the threshold (increasing).
-        lower = y < threshold
-        higher = y >= threshold
-        transition_onset = np.where(lower[:-1] & higher[1:])[0]
-        transition_offset = np.where(higher[:-1] & lower[1:])[0]
-        onset_spikes = np.zeros_like(y)
-        offset_spikes = np.zeros_like(y)
-        onset_spikes[transition_onset] = 1
-        offset_spikes[transition_offset] = 1
-
-        return np.stack((onset_spikes, offset_spikes))
-
-
 # Build a batch
 def get_data_dict(batch_size, test=False):
     '''
