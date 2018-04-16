@@ -1,6 +1,6 @@
 import matplotlib
 
-from guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik
+from lsnn.guillaume_toolbox import einsum_bij_jk_to_bik
 
 import datetime
 import os
@@ -10,11 +10,11 @@ from time import time
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from guillaume_toolbox.file_saver_dumper_no_h5py import save_file
-from guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
+from lsnn.guillaume_toolbox import save_file
+from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
 
-from spiking_models import tf_cell_to_savable_dict, exp_convolve, ALIF
-from guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
+from lsnn.spiking_models import tf_cell_to_savable_dict, exp_convolve, ALIF
+from lsnn.guillaume_toolbox import weight_sampler, rewiring_optimizer_wrapper
 import json
 from tensorflow.examples.tutorials.mnist import input_data
 

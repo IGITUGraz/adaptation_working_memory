@@ -1,7 +1,7 @@
 import numpy.random as rd
 import tensorflow as tf
 
-from guillaume_toolbox.tensorflow_einsums.einsum_re_written import  einsum_bij_jk_to_bik
+from lsnn.guillaume_toolbox import  einsum_bij_jk_to_bik
 
 a = rd.rand(2,3,4)
 b = rd.rand(4,5)
