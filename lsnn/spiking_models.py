@@ -141,7 +141,8 @@ class LIF(Cell):
     def __init__(self, n_in, n_rec, tau=20., thr=0.03,
                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=1, rewiring_connectivity=-1,
                  in_neuron_sign=None, rec_neuron_sign=None,
-                 dampening_factor=0.3):
+                 dampening_factor=0.3,
+                 injected_noise_current=0.):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -175,6 +176,8 @@ class LIF(Cell):
         self.tau = tau
         self._decay = tf.exp(-dt / tau)
         self.thr = thr
+
+        self.injected_noise_current = injected_noise_current
 
         with tf.name_scope('WeightDefinition'):
 
@@ -236,11 +239,16 @@ class LIF(Cell):
         i_future_buffer = state.i_future_buffer + einsum_bi_ijk_to_bjk(inputs, self.W_in) + einsum_bi_ijk_to_bjk(
             state.z, self.W_rec)
 
+        add_current = 0.
+        if self.injected_noise_current > 0:
+            add_current = tf.random_normal(shape=state.z.shape, stddev=self.injected_noise_current)
+
         new_v, new_z = self.LIF_dynamic(
             v=state.v,
             z=state.z,
             z_buffer=state.z_buffer,
-            i_future_buffer=i_future_buffer)
+            i_future_buffer=i_future_buffer,
+            add_current=add_current)
 
         new_z_buffer = tf_roll(state.z_buffer, new_z, axis=2)
         new_i_future_buffer = tf_roll(i_future_buffer, axis=2)
@@ -251,7 +259,7 @@ class LIF(Cell):
                                   z_buffer=new_z_buffer)
         return new_z, new_state
 
-    def LIF_dynamic(self, v, z, z_buffer, i_future_buffer, thr=None, decay=None, n_refractory=None):
+    def LIF_dynamic(self, v, z, z_buffer, i_future_buffer, thr=None, decay=None, n_refractory=None, add_current=0.):
         """
         Function that generate the next spike and voltage tensor for given cell state.
 .expand_dims(thr,axis=1)
@@ -264,6 +272,7 @@ class LIF(Cell):
         :param thr:
         :param decay:
         :param n_refractory:
+        :param add_current:
         :return:
         """
 
@@ -272,7 +281,7 @@ class LIF(Cell):
             if decay is None: decay = self._decay
             if n_refractory is None: n_refractory = self.n_refractory
 
-            i_t = i_future_buffer[:, :, 0]
+            i_t = i_future_buffer[:, :, 0] + add_current
 
             I_reset = z * thr
 
@@ -305,7 +314,7 @@ class ALIF(LIF):
                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
                  tau_adaptation=200., beta=1.6,
                  rewiring_connectivity=-1, dampening_factor=0.3,
-                 in_neuron_sign=None, rec_neuron_sign=None):
+                 in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -322,7 +331,8 @@ class ALIF(LIF):
         super(ALIF, self).__init__(n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt, n_refractory=n_refractory,
                                    dtype=dtype, n_delay=n_delay,
                                    rewiring_connectivity=rewiring_connectivity,
-                                   dampening_factor=dampening_factor, in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign)
+                                   dampening_factor=dampening_factor, in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+                                   injected_noise_current=injected_noise_current)
 
         if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
         if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
