@@ -9,9 +9,9 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework.ops import Tensor
 from tensorflow.python.ops.variables import Variable
 
-from lsnn.guillaume_toolbox import weight_sampler
-from lsnn.guillaume_toolbox import einsum_bi_ijk_to_bjk, einsum_bi_bij_to_bj
-from lsnn.guillaume_toolbox import tf_roll
+from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler
+from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bi_ijk_to_bjk
+from lsnn.guillaume_toolbox.tensorflow_utils import tf_roll
 
 Cell = tf.contrib.rnn.BasicRNNCell
 
