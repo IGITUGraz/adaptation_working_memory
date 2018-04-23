@@ -3,10 +3,10 @@ This file installs the LSNN package.
 """
 import re
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 __author__ = "Guillaume Bellec, Darjan Salaj, Anand Subramoney"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 def get_requirements(filename):
@@ -30,7 +30,7 @@ requirements, dependency_links = get_requirements('requirements.txt')
 setup(
     name="LSNN",
     version=__version__,
-    packages=('lsnn',),
+    packages=find_packages('.'),
     author=__author__,
     author_email="bellec@igi.tugraz.at",
     description="Recurrent Spiking Neural Network (LSNN)",
