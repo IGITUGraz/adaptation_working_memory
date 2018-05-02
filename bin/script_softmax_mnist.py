@@ -75,7 +75,7 @@ if 0 < FLAGS.rewiring_connectivity and FLAGS.neuron_sign:
     n_excitatory_in = int(FLAGS.proportion_excitatory * FLAGS.n_in)
     n_inhibitory_in = FLAGS.n_in - n_excitatory_in
     in_neuron_sign = np.concatenate([-np.ones(n_inhibitory_in), np.ones(n_excitatory_in)])
-    in_neuron_sign = np.random.shuffle(in_neuron_sign)
+    np.random.shuffle(in_neuron_sign)
 
     n_excitatory = int(FLAGS.proportion_excitatory * (FLAGS.n_regular + FLAGS.n_adaptive))
     n_inhibitory = FLAGS.n_regular + FLAGS.n_adaptive - n_excitatory
