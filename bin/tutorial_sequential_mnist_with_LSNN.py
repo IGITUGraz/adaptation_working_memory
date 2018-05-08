@@ -49,7 +49,6 @@ tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularizati
 tf.app.flags.DEFINE_integer('n_iter', 100000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('n_output_average_steps', 28 * 2, 'steps using for averaged the output logits')
 tf.app.flags.DEFINE_integer('lr_decay_every', 2500, 'Decay learning rate every n steps')
 tf.app.flags.DEFINE_integer('print_every', 100, '')
 ##
