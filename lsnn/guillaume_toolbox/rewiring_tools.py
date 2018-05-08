@@ -260,7 +260,7 @@ def rewiring_optimizer_wrapper(opt, loss, learning_rate, l1s, temperatures,
     with tf.control_dependencies(is_positive_theta_list):
         check_connectivity = get_global_connectivity_bound_assertion(rewiring_var_list,rewiring_connectivities)
         with tf.control_dependencies([check_connectivity]):
-            gradient_check_list = [tf.check_numerics(g,message='CheckNaNGradients') for (g,v) in grads_and_vars]
+            gradient_check_list = [tf.check_numerics(g,message='Check NaN gradients for variable ' + v.name) for (g,v) in grads_and_vars]
 
             with tf.control_dependencies(gradient_check_list):
                 apply_gradients = opt.apply_gradients(grads_and_vars, global_step=global_step)
