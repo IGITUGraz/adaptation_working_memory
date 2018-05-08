@@ -74,23 +74,26 @@ def random_sparse_signed_matrix(neuron_sign, p=1., balance_zero_mean_per_neuron=
     w = lambda theta, sign: (theta) * (theta > 0) * sign
     _w = w(theta, sign)
 
-    # Normalize a first time, but this is obsolete if the stabilization happens also on a single neuron basis
-    val_E = np.sum(_w[E, :])
-    val_I = - np.sum(_w[I, :])
-    assert val_I > 0 and val_E > 0, 'Sign error'
-    theta[I, :] *= val_E / val_I
-    _w = w(theta, sign)
-
-    if balance_zero_mean_per_neuron:
-        w_balanced = balance_matrix_per_neuron(_w)
-        theta[theta > 0] = np.abs(w_balanced[theta > 0])
+    if (np.sum(I) > 0):
+        # Normalize a first time, but this is obsolete if the stabilization happens also on a single neuron basis
+        val_E = np.sum(_w[E, :])
+        val_I = - np.sum(_w[I, :])
+        assert val_I > 0 and val_E > 0, 'Sign error'
+        theta[I, :] *= val_E / val_I
         _w = w(theta, sign)
-        assert (_w[np.logical_not(is_con)] == 0).all(), 'Balancing the neurons procuded a sign error'
 
-    # Normalize to scale the eigenvalues
-    _, factor = max_eigen_value_on_unit_circle(_w)
-    theta *= factor
-    _w = w(theta, sign)
+        if balance_zero_mean_per_neuron:
+            w_balanced = balance_matrix_per_neuron(_w)
+            theta[theta > 0] = np.abs(w_balanced[theta > 0])
+            _w = w(theta, sign)
+            assert (_w[np.logical_not(is_con)] == 0).all(), 'Balancing the neurons procuded a sign error'
+
+        # Normalize to scale the eigenvalues
+        _, factor = max_eigen_value_on_unit_circle(_w)
+        theta *= factor
+        _w = w(theta, sign)
+    else:
+        print("Warning: no inhibitory neurons detected, no balancing is performed")
 
     assert (_w[E] >= 0).all(), 'Found negative excitatory weights'
     assert (_w[I] <= 0).all(), 'Found negative excitatory weights'
@@ -184,26 +187,19 @@ def sample_matrix_specific_reconnection_number_for_global_fixed_coonectivity(the
             counts = [tf.reduce_sum(tf.cast(is_class_i, dtype=tf.int32)) for is_class_i in is_class_i_list]
             return counts
 
-
-def rewiring_optimizer_wrapper(opt, loss, learning_rate, l1s, temperatures,
-                               rewiring_connectivities, global_step=None, all_trained_var_list=None):
-    if all_trained_var_list is None:
-        all_trained_var_list = tf.trainable_variables()
+def compute_gradient_of_rewiring_variables(opt,loss,all_trained_var_list):
 
     rewiring_w_list = tf.get_collection('Rewiring/Weights')
     rewiring_sign_list = tf.get_collection('Rewiring/Signs')
     rewiring_var_list = tf.get_collection('Rewiring/Variables')
-
-    if np.isscalar(l1s): l1s = [l1s for _ in range(len(rewiring_var_list))]
-    if np.isscalar(temperatures): temperatures = [temperatures for _ in range(len(rewiring_var_list))]
-    if np.isscalar(rewiring_connectivities): rewiring_connectivities = [rewiring_connectivities for _ in range(len(rewiring_var_list))]
 
     # generate the two sets of variables
     standard_grads_and_vars = opt.compute_gradients(loss, var_list=all_trained_var_list)
 
     # compute the gradients of rewired variables (disconnected vars have non zero gradients to avoid irregularities for optimizers with momentum)
     rewiring_gradient_list = tf.gradients(loss, rewiring_w_list)
-    rewiring_gradient_list = [g * s for g, s in zip(rewiring_gradient_list, rewiring_sign_list)]
+
+    rewiring_gradient_list = [g * s if g is not None else None for g, s in zip(rewiring_gradient_list, rewiring_sign_list)]
     rewiring_gradient_dict = dict([(v, g) for g, v in zip(rewiring_gradient_list, rewiring_var_list)])
 
     # OP to apply all gradient descent updates
@@ -214,36 +210,86 @@ def rewiring_optimizer_wrapper(opt, loss, learning_rate, l1s, temperatures,
         else:
             grads_and_vars.append((rewiring_gradient_dict[v],v))
 
-    apply_gradients = opt.apply_gradients(grads_and_vars, global_step=global_step)
+    return grads_and_vars
+
+def get_global_connectivity_bound_assertion(rewiring_var_list,rewiring_connectivities):
+    if np.isscalar(rewiring_connectivities): rewiring_connectivities = [rewiring_connectivities for _ in range(len(rewiring_var_list))]
+
+    is_positive_theta_list = [tf.greater(th.read_value(), 0) for th in rewiring_var_list]
+
+    n_connected_list = [tf.reduce_sum(tf.cast(is_pos, dtype=tf.float32)) for is_pos in is_positive_theta_list]
+    size_list = [tf.size(is_pos) for is_pos in is_positive_theta_list]
+    init_n_connected_list = [tf.cast(size, dtype=tf.float32) * p for size, p in
+                             zip(size_list, rewiring_connectivities)]
+
+    total_connected = tf.reduce_sum(n_connected_list)
+    limit_connected = tf.reduce_sum(init_n_connected_list)
+
+    check_connectivity = tf.Assert(total_connected <= limit_connected, [total_connected, limit_connected],
+                                       name='CheckRewiringConnectivityBound')
+    return check_connectivity
+
+
+def rewiring_optimizer_wrapper(opt, loss, learning_rate, l1s, temperatures,
+                               rewiring_connectivities, global_step=None,
+                               all_trained_var_list=None,
+                               rewiring_grads_and_vars=None):
+    if all_trained_var_list is None:
+        all_trained_var_list = tf.trainable_variables()
+
+    # Select the rewired variable in the given list of variable to train
+    rewiring_var_list = []
+    for v in tf.get_collection('Rewiring/Variables'):
+        if v in all_trained_var_list:
+            rewiring_var_list.append(v)
+
+    if rewiring_grads_and_vars is None:
+        grads_and_vars = compute_gradient_of_rewiring_variables(opt,loss,all_trained_var_list)
+    else:
+        grads_and_vars = rewiring_grads_and_vars
+
+    assert len(all_trained_var_list) == len(grads_and_vars)
+    for v,gv in zip(all_trained_var_list,grads_and_vars):
+        assert v == gv[1]
+
+    if np.isscalar(l1s): l1s = [l1s for _ in range(len(rewiring_var_list))]
+    if np.isscalar(temperatures): temperatures = [temperatures for _ in range(len(rewiring_var_list))]
+    if np.isscalar(rewiring_connectivities): rewiring_connectivities = [rewiring_connectivities for _ in range(len(rewiring_var_list))]
 
     is_positive_theta_list = [tf.greater(th, 0) for th in rewiring_var_list]
     with tf.control_dependencies(is_positive_theta_list):
-        with tf.control_dependencies([apply_gradients]):
+        check_connectivity = get_global_connectivity_bound_assertion(rewiring_var_list,rewiring_connectivities)
+        with tf.control_dependencies([check_connectivity]):
+            gradient_check_list = [tf.check_numerics(g,message='CheckNaNGradients') for (g,v) in grads_and_vars]
 
-            # This is to make sure that the algorithms does not reconnect synapses by mistakes,
-            # This can happen with optimizers like Adam
-            disconnection_guards = [tf.assign(var, tf.where(is_pos, var, tf.zeros_like(var))) for var, is_pos in
-                                    zip(rewiring_var_list, is_positive_theta_list)]
+            with tf.control_dependencies(gradient_check_list):
+                apply_gradients = opt.apply_gradients(grads_and_vars, global_step=global_step)
+                with tf.control_dependencies([apply_gradients]):
 
-            with tf.control_dependencies(disconnection_guards):
-                rewiring_var_value_list = [th.read_value() for th in rewiring_var_list]
+                    # This is to make sure that the algorithms does not reconnect synapses by mistakes,
+                    # This can happen with optimizers like Adam
+                    disconnection_guards = [tf.assign(var, tf.where(is_pos, var, tf.zeros_like(var))) for var, is_pos in
+                                            zip(rewiring_var_list, is_positive_theta_list)]
 
-                mask_connected = lambda th: tf.cast(tf.greater(th, 0), tf.float32)
-                noise_update = lambda th: mask_connected(th) * tf.random_normal(shape=tf.shape(th))
+                    with tf.control_dependencies(disconnection_guards):
+                        rewiring_var_value_list = [th.read_value() for th in rewiring_var_list]
 
-                apply_regularization = [tf.assign_add(th, - learning_rate * mask_connected(th_) * l1 \
-                                                          + tf.sqrt(2 * learning_rate * temp) * noise_update(th_))
-                                        for th, th_, l1, temp in
-                                        zip(rewiring_var_list, rewiring_var_value_list, l1s, temperatures)]
+                        mask_connected = lambda th: tf.cast(tf.greater(th, 0), tf.float32)
+                        noise_update = lambda th: mask_connected(th) * tf.random_normal(shape=tf.shape(th))
 
-                with tf.control_dependencies(apply_regularization):
-                    number_of_rewired_connections = sample_matrix_specific_reconnection_number_for_global_fixed_coonectivity(
-                        rewiring_var_list, rewiring_connectivities)
+                        apply_regularization = [tf.assign_add(th, - learning_rate * mask_connected(th_) * l1 \
+                                                                  + tf.sqrt(2 * learning_rate * temp) * noise_update(th_))
+                                                for th, th_, l1, temp in
+                                                zip(rewiring_var_list, rewiring_var_value_list, l1s, temperatures)]
 
-                    apply_rewiring = [rewiring(th, nb_reconnect=nb) for th, nb in
-                                      zip(rewiring_var_list, number_of_rewired_connections)]
-                    with tf.control_dependencies(apply_rewiring):
-                        train_step = tf.no_op('Train')
+                        with tf.control_dependencies(apply_regularization):
+                            number_of_rewired_connections = sample_matrix_specific_reconnection_number_for_global_fixed_coonectivity(
+                                rewiring_var_list, rewiring_connectivities)
+
+                            apply_rewiring = [rewiring(th, nb_reconnect=nb) for th, nb in
+                                              zip(rewiring_var_list, number_of_rewired_connections)]
+                            with tf.control_dependencies(apply_rewiring):
+                                train_step = tf.no_op('Train')
 
     return train_step
 

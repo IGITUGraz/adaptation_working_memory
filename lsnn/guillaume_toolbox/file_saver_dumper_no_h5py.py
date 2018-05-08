@@ -2,7 +2,39 @@ import json
 import numpy as np
 import os
 import pickle
+import datetime
+from collections import OrderedDict
+import tensorflow as tf
 
+## Functions to process tensorflow flags
+def flag_to_dict(FLAG):
+    if tf.__version__ >= '1.5':
+        flag_dict = FLAG.flag_values_dict()
+    else:
+        flag_dict = FLAG.__flags
+    return flag_dict
+
+def get_storage_path_reference(script_file,FLAG,root):
+
+    # just evalute once the flag cause sometimes it is bugged
+    key0 = list(dir(FLAG))[0]
+    getattr(FLAG,key0)
+
+    # SETUP THE SAVING FOLDER
+    script_name = os.path.basename(script_file)[:-3]
+    root_path = os.path.join(root,script_name)
+    # File reference for saving info
+    time_stamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+
+    flag_dict = flag_to_dict(FLAG)
+
+    config = OrderedDict(sorted((flag_dict.items())))
+    string_list = [k + '_' + str(v) for k, v in config.items()]
+    random_key = str(np.random.randint(0,1000000)).zfill(6)
+    file_reference = time_stamp + '-' + random_key + '-' + '-'.join(string_list)
+    file_reference = file_reference[:240]
+    full_storage_path = os.path.join(root_path,file_reference)
+    return file_reference,full_storage_path, flag_dict
 
 ## JSON
 class NumpyAwareEncoder(json.JSONEncoder):
