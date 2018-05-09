@@ -159,6 +159,8 @@ class LIF(Cell):
 
         if np.isscalar(tau): tau = tf.ones(n_rec, dtype=dtype) * np.mean(tau)
         if np.isscalar(thr): thr = tf.ones(n_rec, dtype=dtype) * np.mean(thr)
+        tau = tf.cast(tau,dtype=dtype)
+        dt = tf.cast(dt,dtype=dtype)
 
         self.dampening_factor = dampening_factor
 

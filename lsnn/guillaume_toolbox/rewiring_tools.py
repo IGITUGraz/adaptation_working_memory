@@ -88,12 +88,13 @@ def random_sparse_signed_matrix(neuron_sign, p=1., balance_zero_mean_per_neuron=
             _w = w(theta, sign)
             assert (_w[np.logical_not(is_con)] == 0).all(), 'Balancing the neurons procuded a sign error'
 
-        # Normalize to scale the eigenvalues
-        _, factor = max_eigen_value_on_unit_circle(_w)
-        theta *= factor
-        _w = w(theta, sign)
     else:
         print("Warning: no inhibitory neurons detected, no balancing is performed")
+
+    # Normalize to scale the eigenvalues
+    _, factor = max_eigen_value_on_unit_circle(_w)
+    theta *= factor
+    _w = w(theta, sign)
 
     assert (_w[E] >= 0).all(), 'Found negative excitatory weights'
     assert (_w[I] <= 0).all(), 'Found negative excitatory weights'
