@@ -181,6 +181,10 @@ class LIF(Cell):
 
         self.injected_noise_current = injected_noise_current
 
+        self.rewiring_connectivity = rewiring_connectivity
+        self.in_neuron_sign = in_neuron_sign
+        self.rec_neuron_sign = rec_neuron_sign
+
         with tf.name_scope('WeightDefinition'):
 
             # Input weights
@@ -190,7 +194,7 @@ class LIF(Cell):
                 self.w_in_var = tf.Variable(rd.randn(n_in, n_rec) / np.sqrt(n_in), dtype=dtype, name="InputWeight")
                 self.w_in_val = self.w_in_var
 
-            self.w_in_delay = rd.randint(self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec)
+            self.w_in_delay = tf.Variable(rd.randint(self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec),dtype=tf.int32,name="InDelays",trainable=False)
             self.W_in = weight_matrix_with_delay_dimension(self.w_in_val, self.w_in_delay, self.n_delay)
 
             if 0 < rewiring_connectivity < 1:
@@ -206,7 +210,7 @@ class LIF(Cell):
 
             self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val),
                                       self.w_rec_val)  # Disconnect autotapse
-            self.w_rec_delay = rd.randint(self.n_delay, size=n_rec * n_rec).reshape(n_rec, n_rec)
+            self.w_rec_delay = tf.Variable(rd.randint(self.n_delay, size=n_rec * n_rec).reshape(n_rec, n_rec),dtype=tf.int32,name="RecDelays",trainable=False)
             self.W_rec = weight_matrix_with_delay_dimension(self.w_rec_val, self.w_rec_delay, self.n_delay)
 
     @property
