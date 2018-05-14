@@ -80,7 +80,7 @@ def weight_matrix_with_delay_dimension(w, d, n_delay):
     with tf.name_scope('WeightDelayer'):
         w_d_list = []
         for kd in range(n_delay):
-            mask = d == kd
+            mask = tf.equal(d,kd)
             w_d = tf.where(condition=mask, x=w, y=tf.zeros_like(w))
             w_d_list.append(w_d)
 
