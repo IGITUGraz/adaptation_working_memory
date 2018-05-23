@@ -14,7 +14,7 @@ def flag_to_dict(FLAG):
         flag_dict = FLAG.__flags
     return flag_dict
 
-def get_storage_path_reference(script_file,FLAG,root):
+def get_storage_path_reference(script_file,FLAG,root,flags=True):
 
     # just evalute once the flag cause sometimes it is bugged
     key0 = list(dir(FLAG))[0]
@@ -24,14 +24,16 @@ def get_storage_path_reference(script_file,FLAG,root):
     script_name = os.path.basename(script_file)[:-3]
     root_path = os.path.join(root,script_name)
     # File reference for saving info
-    time_stamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    time_stamp = datetime.datetime.now().strftime("%Y_%m_%d__%H_%M__%S_%f")
 
     flag_dict = flag_to_dict(FLAG)
 
-    config = OrderedDict(sorted((flag_dict.items())))
-    string_list = [k + '_' + str(v) for k, v in config.items()]
     random_key = str(np.random.randint(0,1000000)).zfill(6)
-    file_reference = time_stamp + '-' + random_key + '-' + '-'.join(string_list)
+    file_reference = time_stamp + '-' + random_key
+    if flags:
+        config = OrderedDict(sorted((flag_dict.items())))
+        string_list = [k + '_' + str(v) for k, v in config.items()]
+        file_reference = file_reference + '-' + '-'.join(string_list)
     file_reference = file_reference[:240]
     full_storage_path = os.path.join(root_path,file_reference)
     return file_reference,full_storage_path, flag_dict

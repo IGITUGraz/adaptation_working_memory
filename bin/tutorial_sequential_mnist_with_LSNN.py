@@ -39,18 +39,18 @@ FLAGS = tf.app.flags.FLAGS
 
 ##
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
-tf.app.flags.DEFINE_bool('save_data', False, 'whether to save simulation data in result folder')
+tf.app.flags.DEFINE_bool('save_data', True, 'whether to save simulation data in result folder')
 ##
 tf.app.flags.DEFINE_integer('n_batch', 256, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('n_in', 1, 'number of input units to convert gray level input spikes.')
 tf.app.flags.DEFINE_integer('n_regular', 140, 'number of regular spiking units in the recurrent layer.')
 tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of adaptive spiking units in the recurrent layer')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 100000, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 37000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('lr_decay_every', 2500, 'Decay learning rate every n steps')
-tf.app.flags.DEFINE_integer('print_every', 100, '')
+tf.app.flags.DEFINE_integer('print_every', 400, '')
 ##
 tf.app.flags.DEFINE_float('beta', 1.8, 'Scaling constant of the adaptive threshold')
 # to solve safely set tau_a == expected recall delay
@@ -63,7 +63,7 @@ tf.app.flags.DEFINE_float('reg', 1e-3, 'regularization coefficient to target a s
 tf.app.flags.DEFINE_float('rewiring_temperature', 0., 'regularization coefficient')
 tf.app.flags.DEFINE_float('proportion_excitatory', 0.75, 'proportion of excitatory neurons')
 ##
-tf.app.flags.DEFINE_bool('interactive_plot', True, 'Perform plots')
+tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('verbose', True, 'Print many info during training')
 tf.app.flags.DEFINE_bool('neuron_sign', True,
                          'If rewiring is active, this will fix the sign of input and recurrent neurons')
@@ -74,10 +74,11 @@ tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring
 tf.app.flags.DEFINE_float('dampening_factor', 0.3, 'Parameter necessary to approximate the spike derivative')
 
 # Define the flag object as dictionnary for saving purposes
-_, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/')
+_, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)
 if FLAGS.save_data:
-    os.mkdir(storage_path)
+    os.makedirs(storage_path, exist_ok=True)
     save_file(flag_dict, storage_path, 'flag', 'json')
+    print('saving data to: ' + storage_path)
 print(json.dumps(flag_dict, indent=4))
 
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
@@ -118,7 +119,7 @@ targets = tf.placeholder(dtype=tf.int64, shape=(FLAGS.n_batch,),
 
 
 # Build a batch
-def get_data_dict(batch_size, test=False):
+def get_data_dict(batch_size, type='train'):
     '''
     Generate the dictionary to be fed when running a tensorflow op.
 
@@ -126,10 +127,15 @@ def get_data_dict(batch_size, test=False):
     :param test:
     :return:
     '''
-    if test:
-        input_px, target_oh = mnist.test.next_batch(batch_size)
-    else:
+    if type == 'test':
+        input_px, target_oh = mnist.test.next_batch(batch_size, shuffle=False)
+    elif type == 'validation':
+        input_px, target_oh = mnist.validation.next_batch(batch_size)
+    elif type == 'train':
         input_px, target_oh = mnist.train.next_batch(batch_size)
+    else:
+        raise ValueError("Wrong data group: " + str(type))
+
     target_num = np.argmax(target_oh, axis=1)
 
     # transform target one hot from batch x classes to batch x time x classes
@@ -282,7 +288,6 @@ results_tensors = {'loss': loss,
                    'loss_reg': loss_regularization,
                    'loss_recall': loss_recall,
                    'accuracy': accuracy,
-                   'final_state': final_state,
                    'av': av,
                    'learning_rate': learning_rate,
 
@@ -314,8 +319,10 @@ for k_iter in range(FLAGS.n_iter):
     # Print some values to monitor convergence
     if np.mod(k_iter, FLAGS.print_every) == 0:
 
-        val_dict, input_img = get_data_dict(FLAGS.n_batch, test=True)
+        val_dict, input_img = get_data_dict(FLAGS.n_batch, type='validation')
         results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
+        save_file(results_values, storage_path, 'results_values', 'pickle')
+        save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
 
         # Storage of the results
         test_loss_with_reg_list.append(results_values['loss_reg'])
@@ -370,26 +377,67 @@ for k_iter in range(FLAGS.n_iter):
                 results_values['learning_rate'], t_train,
             ))
 
+        # Save files result
+        if FLAGS.save_data:
+            results = {
+                'error': test_error_list[-1],
+                'loss': test_loss_list[-1],
+                'loss_with_reg': test_loss_with_reg_list[-1],
+                'loss_with_reg_list': test_loss_with_reg_list,
+                'error_list': test_error_list,
+                'loss_list': test_loss_list,
+                'time_to_ref': time_to_ref_list,
+                'training_time': training_time_list,
+                'tau_delay_list': tau_delay_list,
+                'flags': flag_dict,
+            }
+            save_file(results, storage_path, 'results', file_type='json')
+
         if FLAGS.interactive_plot:
             update_plot(plot_results_values)
 
     # train
     t0 = time()
-    train_dict, input_img = get_data_dict(FLAGS.n_batch)
+    train_dict, input_img = get_data_dict(FLAGS.n_batch, type='train')
     final_state_value, _ = sess.run([final_state, train_step], feed_dict=train_dict)
     t_train = time() - t0
 
-update_plot(plot_results_values)
-plt.ioff() if FLAGS.interactive_plot else None
-plt.show()
+if FLAGS.interactive_plot:
+    update_plot(plot_results_values)
+    plt.ioff()
+    plt.show()
 
 # Saving setup
 # Get a meaning full fill name and so on
 
 # Save a sample trajectory
 if FLAGS.save_data:
+    # Save the tensorflow graph
+    saver = tf.train.Saver()
+    saver.save(sess, os.path.join(storage_path, 'session'))
+    saver.export_meta_graph(os.path.join(storage_path, 'graph.meta'))
+
+    test_errors = []
+    n_test_batches = (mnist.test.num_examples//FLAGS.n_batch) + 1
+    for i in range(n_test_batches):  # cover the whole test set
+        test_dict, input_img = get_data_dict(FLAGS.n_batch, type='test')
+
+        results_values, plot_results_values, in_spk, spk, targets_np = sess.run(
+            [results_tensors, plot_result_tensors, input_spikes, z, targets],
+            feed_dict=test_dict)
+        test_errors.append(results_values['accuracy'])
+
+    print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over {} test batches of size {})'''
+          .format(np.mean(test_errors), np.std(test_errors), n_test_batches, FLAGS.n_batch))
+    plot_results_values['test_imgs'] = np.array(input_img)
+    save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
+    save_file(results_values, storage_path, 'results_values', 'pickle')
+
     # Save files result
     results = {
+        'test_errors': test_errors,
+        'test_errors_mean': np.mean(test_errors),
+        'test_errors_std': np.std(test_errors),
         'error': test_error_list[-1],
         'loss': test_loss_list[-1],
         'loss_with_reg': test_loss_with_reg_list[-1],
@@ -403,6 +451,9 @@ if FLAGS.save_data:
     }
 
     save_file(results, storage_path, 'results', file_type='json')
-    save_file(tf_cell_to_savable_dict(cell, sess), storage_path, 'network_data', file_type='pickle')
+
+    for i in range(min(8, FLAGS.n_batch)):
+        update_plot(plot_results_values, batch=i)
+        fig.savefig(os.path.join(storage_path, 'figure_TEST_' + str(i) + '.pdf'), format='pdf')
 
 del sess
