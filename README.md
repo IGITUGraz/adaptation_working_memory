@@ -22,3 +22,14 @@ ICLR 2018, (https://arxiv.org/abs/1711.05136)
 From the main folder run:  
 `` pip3 install --user .``  
 You can now import the tensorflow cell called ALIF (for adaptive leakey integrate and fire) as well as the rewiring wrapper to update connectivity matrices after each call to the optimizer.
+
+## Troubleshooting
+
+If the scripts fail with the following error:
+`` Illegal instruction (core dumped) ``
+
+It is most probably due to the lack of AVX instructions on the machine you are using.
+A known workaround is to reinstall the LSNN package with older tensorflow version (1.5).
+Change requirements.txt to contain:
+
+`` tensorflow==1.5 ``
