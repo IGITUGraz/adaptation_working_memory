@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file, get_storage_path_reference
-from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
+from tutorial_sequential_mnist_plot import update_mnist_plot
 
 from lsnn.spiking_models import tf_cell_to_savable_dict, exp_convolve, ALIF
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
@@ -209,71 +209,7 @@ sess.run(tf.global_variables_initializer())
 if FLAGS.interactive_plot:
     plt.ion()
 
-fig, ax_list = plt.subplots(5, figsize=(6, 6))
-
-
-def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=300):
-    """
-    This function iterates the matplotlib figure on every call.
-    It plots the data for a fixed sequence that should be representative of the expected computation
-    :return:
-    """
-    # Clear the axis to print new plots
-    for k in range(ax_list.shape[0]):
-        ax = ax_list[k]
-        ax.clear()
-        strip_right_top_axis(ax)
-
-    # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
-    ax_list[0].set_title("Target: " + str(plot_results_values['targets'][batch]))
-    for k_data, data, d_name in zip(range(3),
-                                    [plot_result_values['input_spikes'], plot_result_values['z_regular'],
-                                     plot_result_values['z_adaptive']],
-                                    ['Input', 'R', 'A']):
-
-        ax = ax_list[k_data]
-        ax.grid(color='black', alpha=0.15, linewidth=0.4)
-
-        if np.size(data) > 0:
-            data = data[batch]
-            n_max = min(data.shape[1], n_max_neuron_per_raster)
-            cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
-            data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
-            if k_data == 0:
-                ax.imshow(data.T, aspect='auto', cmap='Greys')  # plot LSTM activity differently
-                ax.set_yticklabels([])
-            else:
-                raster_plot(ax, data)
-            ax.set_ylabel(d_name)
-            ax.set_xticklabels([])
-
-    # plot targets
-    ax = ax_list[3]
-    ax.set_yticks([0, 2, 4, 6, 8])
-    classify_out = plot_result_values['out_plot'][batch]
-    ax.imshow(classify_out.T, origin='lower', aspect='auto')
-    ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('Output')
-    ax.set_xticklabels([])
-
-    # debug plot for psp-s or biases
-    ax.set_xticklabels([])
-    ax = ax_list[-1]
-    ax.grid(color='black', alpha=0.08, linewidth=0.3)
-    ax.set_ylabel('Thresholds')
-    threshold_data = plot_result_values['b_con'][batch]
-    threshold_data = threshold_data * cell.beta + FLAGS.thr
-
-    presentation_steps = np.arange(int(threshold_data.shape[0]))
-    ax.plot(threshold_data[:, :], color='r', label='Output', alpha=0.6, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(threshold_data[:, :]), np.max(threshold_data[:, :])])
-
-    ax.set_xlabel('Time in ms')
-    # To plot with interactive python one need to wait one second to the time to draw the axis
-    if FLAGS.interactive_plot:
-        plt.draw()
-        plt.pause(1)
-
+fig, ax_list = plt.subplots(5, figsize=(6, 7.5), gridspec_kw={'wspace':0, 'hspace':0.2})
 
 # Store some results across iterations
 test_loss_list = []
@@ -321,6 +257,7 @@ for k_iter in range(FLAGS.n_iter):
 
         val_dict, input_img = get_data_dict(FLAGS.n_batch, type='validation')
         results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
+
         save_file(results_values, storage_path, 'results_values', 'pickle')
         save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
 
@@ -394,7 +331,7 @@ for k_iter in range(FLAGS.n_iter):
             save_file(results, storage_path, 'results', file_type='json')
 
         if FLAGS.interactive_plot:
-            update_plot(plot_results_values)
+            update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values)
 
     # train
     t0 = time()
@@ -403,9 +340,8 @@ for k_iter in range(FLAGS.n_iter):
     t_train = time() - t0
 
 if FLAGS.interactive_plot:
-    update_plot(plot_results_values)
-    plt.ioff()
-    plt.show()
+    update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values)
+
 
 # Saving setup
 # Get a meaning full fill name and so on
@@ -427,7 +363,7 @@ if FLAGS.save_data:
             feed_dict=test_dict)
         test_errors.append(results_values['accuracy'])
 
-    print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over {} test batches of size {})'''
+    print('''Statistics on the test set: average accuracy {:.2g} +- {:.2g} (averaged over {} test batches of size {})'''
           .format(np.mean(test_errors), np.std(test_errors), n_test_batches, FLAGS.n_batch))
     plot_results_values['test_imgs'] = np.array(input_img)
     save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
@@ -453,7 +389,9 @@ if FLAGS.save_data:
     save_file(results, storage_path, 'results', file_type='json')
 
     for i in range(min(8, FLAGS.n_batch)):
-        update_plot(plot_results_values, batch=i)
+        update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values, batch=i)
         fig.savefig(os.path.join(storage_path, 'figure_TEST_' + str(i) + '.pdf'), format='pdf')
-
+    if FLAGS.interactive_plot:
+        plt.show()
+        plt.ioff()
 del sess

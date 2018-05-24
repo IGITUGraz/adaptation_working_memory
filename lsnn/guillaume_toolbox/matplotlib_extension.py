@@ -70,3 +70,9 @@ def arrow_trajectory(ax,data,epsi=0,hdw=.03,lab='',fact=.8,color=(1.,1.,1.,1.),a
                 ploted_lab = True
                 p = patches.FancyArrow(x, y, dx, dy,facecolor=color,edgecolor=fc,head_width=headwidth,head_length=head_length,label=lab,**kwargs)
             ax.add_patch(p)
+
+
+def hide_bottom_axis(ax):
+    ax.spines['bottom'].set_visible(False)
+    ax.set_xticklabels([])
+    ax.get_xaxis().set_visible(False)
