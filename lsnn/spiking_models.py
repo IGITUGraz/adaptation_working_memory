@@ -30,6 +30,16 @@ def placeholder_container_for_rnn_state(cell_state_size, dtype, batch_size, name
         return placeholder_tuple
 
 
+def placeholder_container_from_example(state_example, name='TupleStateHolder'):
+    with tf.name_scope(name):
+        default_dict = state_example._asdict()
+        placeholder_dict = OrderedDict({})
+        for k, v in default_dict.items():
+            placeholder_dict[k] = tf.placeholder(shape=v.shape, dtype=v.dtype, name=k)
+
+        placeholder_tuple = state_example.__class__(**placeholder_dict)
+        return placeholder_tuple
+
 def feed_dict_with_placeholder_container(dict_to_update, state_holder, state_value, batch_selection=None):
     if state_value is None:
         return dict_to_update
