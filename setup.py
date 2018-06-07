@@ -6,7 +6,7 @@ import re
 from setuptools import setup, find_packages
 
 __author__ = "Guillaume Bellec, Darjan Salaj, Anand Subramoney"
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 
 def get_requirements(filename):

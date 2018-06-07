@@ -139,11 +139,11 @@ def tf_cell_to_savable_dict(cell, sess, supplement={}):
             pass
         elif type(v) in [Variable, Tensor]:
             dict_to_save[k] = sess.run(v)
-        elif type(v) in [bool, int, float, np.ndarray]:
+        elif type(v) in [bool, int, float, np.int64, np.ndarray]:
             dict_to_save[k] = v
         else:
-            print('WARNING: attribute {} is of type {}, not recording it.'.format(k, v))
-            dict_to_save[k] = str(type(v))
+            print('WARNING: attribute of key {} and value {} has type {}, recoding it as string.'.format(k, v, type(v)))
+            dict_to_save[k] = str(v)
 
     return dict_to_save
 
@@ -152,7 +152,8 @@ class LIF(Cell):
                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=1, rewiring_connectivity=-1,
                  in_neuron_sign=None, rec_neuron_sign=None,
                  dampening_factor=0.3,
-                 injected_noise_current=0.):
+                 injected_noise_current=0.,
+                 V0=1.):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -189,6 +190,7 @@ class LIF(Cell):
         self._decay = tf.exp(-dt / tau)
         self.thr = thr
 
+        self.V0 = V0
         self.injected_noise_current = injected_noise_current
 
         self.rewiring_connectivity = rewiring_connectivity
@@ -199,27 +201,26 @@ class LIF(Cell):
 
             # Input weights
             if 0 < rewiring_connectivity < 1:
-                self.w_in_val, self.w_in_sign, self.w_in_var, _ = weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign)
+                self.w_in_val, self.w_in_sign, self.w_in_var, _ = weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign, w_scale=self.V0)
             else:
-                self.w_in_var = tf.Variable(rd.randn(n_in, n_rec) / np.sqrt(n_in), dtype=dtype, name="InputWeight")
+                self.w_in_var = tf.Variable(rd.randn(n_in, n_rec) / np.sqrt(n_in) * self.V0, dtype=dtype, name="InputWeight")
                 self.w_in_val = self.w_in_var
 
             self.w_in_delay = tf.Variable(rd.randint(self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec),dtype=tf.int32,name="InDelays",trainable=False)
             self.W_in = weight_matrix_with_delay_dimension(self.w_in_val, self.w_in_delay, self.n_delay)
 
             if 0 < rewiring_connectivity < 1:
-                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _ = weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign)
+                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _ = weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign, w_scale=self.V0)
             else:
                 if not(rec_neuron_sign is None and in_neuron_sign is None):
                     raise NotImplementedError('Neuron sign requested but this is only implemented with rewiring')
-                self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=dtype,
+                self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec) * self.V0, dtype=dtype,
                                              name='RecurrentWeight')
                 self.w_rec_val = self.w_rec_var
 
             recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
 
-            self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val),
-                                      self.w_rec_val)  # Disconnect autotapse
+            self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val),self.w_rec_val)  # Disconnect autotapse
             self.w_rec_delay = tf.Variable(rd.randint(self.n_delay, size=n_rec * n_rec).reshape(n_rec, n_rec),dtype=tf.int32,name="RecDelays",trainable=False)
             self.W_rec = weight_matrix_with_delay_dimension(self.w_rec_val, self.w_rec_delay, self.n_delay)
 
@@ -299,7 +300,7 @@ class LIF(Cell):
 
             i_t = i_future_buffer[:, :, 0] + add_current
 
-            I_reset = z * thr
+            I_reset = z * thr * self.dt
 
             new_v = decay * v + (1 - decay) * i_t - I_reset
 
@@ -311,8 +312,10 @@ class LIF(Cell):
             new_z.set_shape([None, v.get_shape()[1]])
 
             if n_refractory > 0:
-                is_ref = tf.greater(tf.reduce_max(z_buffer[:, :, -n_refractory:], axis=2), .5)
+                is_ref = tf.greater(tf.reduce_max(z_buffer[:, :, -n_refractory:], axis=2), 0)
                 new_z = tf.where(is_ref, tf.zeros_like(new_z), new_z)
+
+            new_z = new_z * 1/ self.dt
 
             return new_v, new_z
 
@@ -330,7 +333,8 @@ class ALIF(LIF):
                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
                  tau_adaptation=200., beta=1.6,
                  rewiring_connectivity=-1, dampening_factor=0.3,
-                 in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.):
+                 in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
+                 V0=1.):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -342,13 +346,21 @@ class ALIF(LIF):
         :param n_refractory: number of refractory time steps
         :param dtype: data type of the cell tensors
         :param n_delay: number of synaptic delay, the delay range goes from 1 to n_delay time steps
+        :param tau_adaptation: adaptation time constant for the threshold voltage
+        :param beta: amplitude of adpatation
+        :param rewiring_connectivity: number of non-zero synapses in weight matrices (at initialization)
+        :param in_neuron_sign: vector of +1, -1 to specify input neuron signs
+        :param rec_neuron_sign: same of recurrent neurons
+        :param injected_noise_current: amplitude of current noise
+        :param V0: to choose voltage unit, specify the value of V0=1 Volt in the desired unit (example V0=1000 to set voltage in millivolts)
         """
 
         super(ALIF, self).__init__(n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt, n_refractory=n_refractory,
                                    dtype=dtype, n_delay=n_delay,
                                    rewiring_connectivity=rewiring_connectivity,
                                    dampening_factor=dampening_factor, in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-                                   injected_noise_current=injected_noise_current)
+                                   injected_noise_current=injected_noise_current,
+                                   V0=V0)
 
         if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
         if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
@@ -393,7 +405,8 @@ class ALIF(LIF):
             state.z, self.W_rec)
 
         new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
-        thr = self.thr + new_b * self.beta
+
+        thr = self.thr + new_b * self.beta * self.V0
 
         new_v, new_z = self.LIF_dynamic(
             v=state.v,
