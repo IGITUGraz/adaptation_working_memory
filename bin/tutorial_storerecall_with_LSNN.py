@@ -53,7 +53,7 @@ tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 tf.app.flags.DEFINE_float('stop_crit', 0.05, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay')
-tf.app.flags.DEFINE_float('tau_out', 20, 'Mikolov: tau for PSP decay at output')
+tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.3, 'Decaying factor')
 tf.app.flags.DEFINE_float('reg', 1e-2, 'regularization coefficient')
@@ -63,6 +63,9 @@ tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring
 tf.app.flags.DEFINE_float('rewiring_temperature', 0, '')
 tf.app.flags.DEFINE_float('dampening_factor', 0.3, '')
 tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
+tf.app.flags.DEFINE_float('V0', 1, 'unit scaling for LSNN model')
+tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
+tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -75,6 +78,7 @@ tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
+FLAGS.thr = FLAGS.thr * FLAGS.V0  # scaling the threshold too!
 
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
@@ -98,8 +102,8 @@ regularization_f0 = FLAGS.reg_rate / 1000
 regularization_f0_max = FLAGS.reg_max_rate / 1000
 
 # Network parameters
-tau_v = 20
-thr = .01
+tau_v = FLAGS.tau_out
+thr = FLAGS.thr
 
 decay = np.exp(-dt / FLAGS.tau_out)  # output layer psp decay, chose value between 15 and 30ms as for tau_v
 # Symbol number
@@ -133,7 +137,8 @@ cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_rec + FLAGS.n_con, tau=tau_v, n_delay
             n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-            dampening_factor=FLAGS.dampening_factor
+            dampening_factor=FLAGS.dampening_factor,
+            V0=FLAGS.V0
             )
 
 cell_name = type(cell).__name__
