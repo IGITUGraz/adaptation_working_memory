@@ -256,16 +256,11 @@ class LIF(Cell):
         i_future_buffer = state.i_future_buffer + einsum_bi_ijk_to_bjk(inputs, self.W_in) + einsum_bi_ijk_to_bjk(
             state.z, self.W_rec)
 
-        add_current = 0.
-        if self.injected_noise_current > 0:
-            add_current = tf.random_normal(shape=state.z.shape, stddev=self.injected_noise_current)
-
         new_v, new_z = self.LIF_dynamic(
             v=state.v,
             z=state.z,
             z_buffer=state.z_buffer,
-            i_future_buffer=i_future_buffer,
-            add_current=add_current)
+            i_future_buffer=i_future_buffer)
 
         new_z_buffer = tf_roll(state.z_buffer, new_z, axis=2)
         new_i_future_buffer = tf_roll(i_future_buffer, axis=2)
@@ -292,6 +287,9 @@ class LIF(Cell):
         :param add_current:
         :return:
         """
+
+        if self.injected_noise_current > 0:
+            add_current = tf.random_normal(shape=z.shape, stddev=self.injected_noise_current)
 
         with tf.name_scope('LIFdynamic'):
             if thr is None: thr = self.thr
