@@ -268,9 +268,8 @@ for k_iter in range(FLAGS.n_iter):
         training_time_list.append(t_train)
 
         print(
-            '''Iteration {}, epoch {} validation accuracy {:.2g} +- {:.2g} (trial averaged)'''
-                .format(k_iter, mnist.train._epochs_completed, np.mean(test_error_list[-FLAGS.print_every:]),
-                        np.std(test_error_list[-FLAGS.print_every:])))
+            '''Iteration {}, epoch {} validation accuracy {:.3g} '''
+                .format(k_iter, mnist.train._epochs_completed, test_error_list[-1],))
 
 
         def get_stats(v):
