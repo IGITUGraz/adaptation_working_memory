@@ -208,8 +208,7 @@ sess.run(tf.global_variables_initializer())
 # Open an interactive matplotlib window to plot in real time
 if FLAGS.interactive_plot:
     plt.ion()
-
-fig, ax_list = plt.subplots(5, figsize=(6, 7.5), gridspec_kw={'wspace':0, 'hspace':0.2})
+    fig, ax_list = plt.subplots(5, figsize=(6, 7.5), gridspec_kw={'wspace':0, 'hspace':0.2})
 
 # Store some results across iterations
 test_loss_list = []
@@ -388,10 +387,10 @@ if FLAGS.save_data:
 
     save_file(results, storage_path, 'results', file_type='json')
 
-    for i in range(min(8, FLAGS.n_batch)):
-        update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values, batch=i)
-        fig.savefig(os.path.join(storage_path, 'figure_TEST_' + str(i) + '.pdf'), format='pdf')
     if FLAGS.interactive_plot:
-        plt.show()
-        plt.ioff()
+        for i in range(min(8, FLAGS.n_batch)):
+            update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values, batch=i)
+            fig.savefig(os.path.join(storage_path, 'figure_TEST_' + str(i) + '.pdf'), format='pdf')
+            plt.show()
+            plt.ioff()
 del sess
