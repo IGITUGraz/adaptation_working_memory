@@ -258,8 +258,9 @@ for k_iter in range(FLAGS.n_iter):
         val_dict, input_img = get_data_dict(FLAGS.n_batch, type='validation')
         results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
 
-        save_file(results_values, storage_path, 'results_values', 'pickle')
-        save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
+        if FLAGS.save_data:
+            save_file(results_values, storage_path, 'results_values', 'pickle')
+            save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
 
         # Storage of the results
         test_loss_with_reg_list.append(results_values['loss_reg'])
