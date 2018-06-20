@@ -189,13 +189,13 @@ def sample_matrix_specific_reconnection_number_for_global_fixed_connectivity(the
             return counts
 
 
-def compute_gradient_of_rewiring_variables(opt, loss, all_trained_var_list):
+def compute_gradients_with_rewiring_variables(opt, loss, var_list):
     rewiring_w_list = tf.get_collection('Rewiring/Weights')
     rewiring_sign_list = tf.get_collection('Rewiring/Signs')
     rewiring_var_list = tf.get_collection('Rewiring/Variables')
 
     # generate the two sets of variables
-    standard_grads_and_vars = opt.compute_gradients(loss, var_list=all_trained_var_list)
+    grads_and_vars = opt.compute_gradients(loss, var_list=var_list)
 
     # compute the gradients of rewired variables (disconnected vars have non zero gradients to avoid irregularities for optimizers with momentum)
     rewiring_gradient_list = tf.gradients(loss, rewiring_w_list)
@@ -205,14 +205,14 @@ def compute_gradient_of_rewiring_variables(opt, loss, all_trained_var_list):
     rewiring_gradient_dict = dict([(v, g) for g, v in zip(rewiring_gradient_list, rewiring_var_list)])
 
     # OP to apply all gradient descent updates
-    grads_and_vars = []
-    for (g, v) in standard_grads_and_vars:
+    gathered_grads_and_vars = []
+    for (g, v) in grads_and_vars:
         if v not in rewiring_var_list:
-            grads_and_vars.append((g, v))
+            gathered_grads_and_vars.append((g, v))
         else:
-            grads_and_vars.append((rewiring_gradient_dict[v], v))
+            gathered_grads_and_vars.append((rewiring_gradient_dict[v], v))
 
-    return grads_and_vars
+    return gathered_grads_and_vars
 
 
 def get_global_connectivity_bound_assertion(rewiring_var_list, rewiring_connectivities):
@@ -236,24 +236,24 @@ def get_global_connectivity_bound_assertion(rewiring_var_list, rewiring_connecti
 
 def rewiring_optimizer_wrapper(opt, loss, learning_rate, l1s, temperatures,
                                rewiring_connectivities, global_step=None,
-                               all_trained_var_list=None,
-                               rewiring_grads_and_vars=None):
-    if all_trained_var_list is None:
-        all_trained_var_list = tf.trainable_variables()
+                               var_list=None,
+                               grads_and_vars=None):
+    if var_list is None:
+        var_list = tf.trainable_variables()
 
     # Select the rewired variable in the given list of variable to train
     rewiring_var_list = []
     for v in tf.get_collection('Rewiring/Variables'):
-        if v in all_trained_var_list:
+        if v in var_list:
             rewiring_var_list.append(v)
 
-    if rewiring_grads_and_vars is None:
-        grads_and_vars = compute_gradient_of_rewiring_variables(opt, loss, all_trained_var_list)
+    if grads_and_vars is None:
+        grads_and_vars = compute_gradients_with_rewiring_variables(opt, loss, var_list)
     else:
-        grads_and_vars = rewiring_grads_and_vars
+        grads_and_vars = grads_and_vars
 
-    assert len(all_trained_var_list) == len(grads_and_vars)
-    for v, gv in zip(all_trained_var_list, grads_and_vars):
+    assert len(var_list) == len(grads_and_vars), 'Found {} elements in var_list and {} in grads_and_vars'.format(len(var_list),len(grads_and_vars))
+    for v, gv in zip(var_list, grads_and_vars):
         assert v == gv[1]
 
     if np.isscalar(l1s): l1s = [l1s for _ in range(len(rewiring_var_list))]
@@ -271,6 +271,11 @@ def rewiring_optimizer_wrapper(opt, loss, learning_rate, l1s, temperatures,
 
             with tf.control_dependencies(gradient_check_list):
                 apply_gradients = opt.apply_gradients(grads_and_vars, global_step=global_step)
+
+                if len(rewiring_var_list) == 0:
+                    print('Warning: No variable to rewire are found by the rewiring optimizer wrapper')
+                    return apply_gradients
+
                 with tf.control_dependencies([apply_gradients]):
                     # This is to make sure that the algorithms does not reconnect synapses by mistakes,
                     # This can happen with optimizers like Adam

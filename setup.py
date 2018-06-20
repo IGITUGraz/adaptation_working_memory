@@ -17,6 +17,7 @@ def get_requirements(filename):
     with open(filename) as requirements_file:
         requirements = requirements_file.read().strip('\n').splitlines()
     for i, req in enumerate(requirements):
+
         if ':' in req:
             match_obj = re.match(r"git\+(?:https|ssh|http):.*#egg=(.*)-(.*)", req)
             assert match_obj, "Cannot make sense of url {}".format(req)

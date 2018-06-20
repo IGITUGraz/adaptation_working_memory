@@ -265,7 +265,7 @@ with tf.name_scope('OptimizationScheme'):
         train_step = rewiring_optimizer_wrapper(opt, loss, learning_rate, FLAGS.l1, FLAGS.rewiring_temperature,
                                                 rewiring_connectivity_list,
                                                 global_step=global_step,
-                                                all_trained_var_list=tf.trainable_variables())
+                                                var_list=tf.trainable_variables())
     else:
         train_step = opt.minimize(loss=loss, global_step=global_step)
 
