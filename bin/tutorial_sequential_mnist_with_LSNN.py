@@ -197,7 +197,7 @@ with tf.name_scope('OptimizationScheme'):
         train_step = rewiring_optimizer_wrapper(optimizer, loss, learning_rate, FLAGS.l1, FLAGS.rewiring_temperature,
                                                 FLAGS.rewiring_connectivity,
                                                 global_step=global_step,
-                                                all_trained_var_list=tf.trainable_variables())
+                                                var_list=tf.trainable_variables())
     else:
         train_step = optimizer.minimize(loss=loss, global_step=global_step)
 
@@ -208,8 +208,7 @@ sess.run(tf.global_variables_initializer())
 # Open an interactive matplotlib window to plot in real time
 if FLAGS.interactive_plot:
     plt.ion()
-
-fig, ax_list = plt.subplots(5, figsize=(6, 7.5), gridspec_kw={'wspace':0, 'hspace':0.2})
+    fig, ax_list = plt.subplots(5, figsize=(6, 7.5), gridspec_kw={'wspace':0, 'hspace':0.2})
 
 # Store some results across iterations
 test_loss_list = []
@@ -258,8 +257,9 @@ for k_iter in range(FLAGS.n_iter):
         val_dict, input_img = get_data_dict(FLAGS.n_batch, type='validation')
         results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
 
-        save_file(results_values, storage_path, 'results_values', 'pickle')
-        save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
+        if FLAGS.save_data:
+            save_file(results_values, storage_path, 'results_values', 'pickle')
+            save_file(plot_results_values, storage_path, 'plot_results_values', 'pickle')
 
         # Storage of the results
         test_loss_with_reg_list.append(results_values['loss_reg'])
@@ -268,9 +268,8 @@ for k_iter in range(FLAGS.n_iter):
         training_time_list.append(t_train)
 
         print(
-            '''Iteration {}, epoch {} validation accuracy {:.2g} +- {:.2g} (trial averaged)'''
-                .format(k_iter, mnist.train._epochs_completed, np.mean(test_error_list[-FLAGS.print_every:]),
-                        np.std(test_error_list[-FLAGS.print_every:])))
+            '''Iteration {}, epoch {} validation accuracy {:.3g} '''
+                .format(k_iter, mnist.train._epochs_completed, test_error_list[-1],))
 
 
         def get_stats(v):
@@ -388,10 +387,10 @@ if FLAGS.save_data:
 
     save_file(results, storage_path, 'results', file_type='json')
 
-    for i in range(min(8, FLAGS.n_batch)):
-        update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values, batch=i)
-        fig.savefig(os.path.join(storage_path, 'figure_TEST_' + str(i) + '.pdf'), format='pdf')
     if FLAGS.interactive_plot:
-        plt.show()
-        plt.ioff()
+        for i in range(min(8, FLAGS.n_batch)):
+            update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_results_values, batch=i)
+            fig.savefig(os.path.join(storage_path, 'figure_TEST_' + str(i) + '.pdf'), format='pdf')
+            plt.show()
+            plt.ioff()
 del sess

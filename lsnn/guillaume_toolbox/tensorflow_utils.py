@@ -115,7 +115,8 @@ def tf_downsample_test():
 
 def tf_roll(buffer, new_last_element=None, axis=0):
     with tf.name_scope('roll'):
-        l_shp = len(buffer.get_shape())
+        shp = buffer.get_shape()
+        l_shp = len(shp)
 
         # Permute the index to roll over the right index
         perm = np.concatenate([[axis],np.arange(axis),np.arange(start=axis+1,stop=l_shp)])
@@ -133,7 +134,8 @@ def tf_roll(buffer, new_last_element=None, axis=0):
         new_buffer = tf.transpose(new_buffer,perm=inv_perm)
 
         new_buffer = tf.identity(new_buffer,name='Roll')
-        return new_buffer
+        #new_buffer.set_shape(shp)
+    return new_buffer
 
 
 def tf_tuple_of_placeholder(shape_named_tuple,dtype,default_named_tuple=None, name='TupleOfPlaceholder'):
