@@ -201,7 +201,7 @@ class LIF(Cell):
 
             # Input weights
             if 0 < rewiring_connectivity < 1:
-                self.w_in_val, self.w_in_sign, self.w_in_var, _ = weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign, w_scale=self.V0, scope='InputWeight')
+                self.w_in_val, self.w_in_sign, self.w_in_var, _ = weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign, w_scale=self.V0)
             else:
                 self.w_in_var = tf.Variable(rd.randn(n_in, n_rec) / np.sqrt(n_in) * self.V0, dtype=dtype, name="InputWeight")
                 self.w_in_val = self.w_in_var
@@ -211,7 +211,7 @@ class LIF(Cell):
 
         with tf.variable_scope('RecWeights'):
             if 0 < rewiring_connectivity < 1:
-                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _ = weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign, w_scale=self.V0, scope='InputWeight')
+                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _ = weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign, w_scale=self.V0)
             else:
                 if rec_neuron_sign is not None or in_neuron_sign is not None:
                     raise NotImplementedError('Neuron sign requested but this is only implemented with rewiring')
