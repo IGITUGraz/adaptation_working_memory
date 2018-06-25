@@ -16,6 +16,15 @@ from lsnn.guillaume_toolbox.tensorflow_utils import tf_roll
 Cell = tf.contrib.rnn.BasicRNNCell
 
 
+def map_to_named_tuple(S, f):
+    state_dict = S._asdict()
+    new_state_dict = OrderedDict({})
+    for k, v in state_dict.items():
+        new_state_dict[k] = f(v)
+
+    new_named_tuple = S.__class__(**new_state_dict)
+    return new_named_tuple
+
 def placeholder_container_for_rnn_state(cell_state_size, dtype, batch_size, name='TupleStateHolder'):
     with tf.name_scope(name):
         default_dict = cell_state_size._asdict()
