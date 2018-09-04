@@ -1,8 +1,9 @@
 import numpy as np
 import numpy.random as rd
+from scipy.stats import norm
 
 
-def generate_xor_input(batch_size, length, pulse_delay=100, pulse_duration=30, out_duration=100):
+def generate_xor_input(batch_size, length, pulse_delay=100, pulse_duration=30, out_duration=60):
     input_nums = np.zeros((batch_size, length), dtype=float)
     gocue_nums = np.zeros((batch_size, length), dtype=float)
     targets = np.zeros((batch_size), dtype=int)
@@ -10,7 +11,7 @@ def generate_xor_input(batch_size, length, pulse_delay=100, pulse_duration=30, o
     target_mask_nums = np.zeros((batch_size, length), dtype=int)
 
     def pulse_trace():
-        return np.sin(np.linspace(0, np.pi, pulse_duration))
+        return norm.pdf(np.linspace(norm.ppf(0.01), norm.ppf(0.99), pulse_duration))
 
     for b in range(batch_size):
         seq = np.zeros(length)
@@ -34,6 +35,7 @@ def generate_xor_input(batch_size, length, pulse_delay=100, pulse_duration=30, o
         target_nums[b, start_cue:start_cue+pulse_duration+out_duration] = target
 
         target_mask_nums[b, start_cue:start_cue+out_duration] = 1
+        # target_mask_nums[b, :] = 1
 
     network_input = np.stack((input_nums, gocue_nums), axis=-1)  # batch x length x 2
     return network_input, target_nums, target_mask_nums, targets

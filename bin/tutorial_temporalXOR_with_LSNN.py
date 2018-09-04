@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization
 tf.app.flags.DEFINE_integer('n_iter', 200, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('seq_len', 8, 'Number of character steps')
+tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 1, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 50, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
@@ -279,7 +279,7 @@ last_final_state_state_testing_pointer = [sess.run(cell.zero_state(batch_size=FL
 if FLAGS.do_plot and FLAGS.interactive_plot:
     plt.ion()
 if FLAGS.do_plot:
-    fig, ax_list = plt.subplots(4, figsize=(5.9, 6))
+    fig, ax_list = plt.subplots(5, figsize=(5.9, 6))
 
     # re-name the window with the name of the cluster to track relate to the terminal window
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
@@ -291,89 +291,77 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     It plots the data for a fixed sequence that should be representative of the expected computation
     :return:
     """
+    ylabel_x = -0.08
+    ylabel_y = 0.5
     # Clear the axis to print new plots
     for k in range(ax_list.shape[0]):
         ax = ax_list[k]
         ax.clear()
         strip_right_top_axis(ax)
 
-    # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
-    for k_data, data, d_name in zip(range(2),
-                                    [plot_result_values['input_spikes'], plot_result_values['z']],
-                                    ['Input', 'Hidden']):
+    # PLOT Input signals
+    ax = ax_list[0]
+    data = plot_result_values['input_spikes']
+    data = data[batch]
+    presentation_steps = np.arange(data.shape[0])
+    ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
+    ax.axis([0, len(data), -0.5, 0.5])
+    ax.set_ylabel('Input')
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    ax.set_xticklabels([])
 
-        ax = ax_list[k_data]
-        ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    # PLOT Go-cue
+    ax = ax_list[1]
+    data = plot_result_values['input_spikes']
+    data = data[batch]
+    presentation_steps = np.arange(data.shape[0])
+    ax.plot(presentation_steps, data[:, 1], color='red', label='Go-cue', alpha=0.7)
+    ax.axis([0, len(data), -0.5, 0.5])
+    ax.set_ylabel('Go-cue')
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    ax.set_xticklabels([])
 
-        if np.size(data) > 0:
-            data = data[batch]
-            # n_max = min(data.shape[1], n_max_neuron_per_raster)
-            # cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
-            # data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
-            if k_data == 0:
-                presentation_steps = np.arange(data.shape[0])
-                ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-                ax.plot(presentation_steps, data[:, 1], color='red', label='Go-cue', alpha=0.7)
-                ax.axis([0, len(data), -1, 1])
-            else:
-                raster_plot(ax, data, linewidth=0.3)
-            ax.set_ylabel(d_name)
-            ax.set_xticklabels([])
-
-
-    # plot targets
+    # PLOT OUTPUT AND TARGET
     ax = ax_list[2]
     mask = plot_result_values['recall_charac_mask'][batch]
     data = plot_result_values['target_nums'][batch]
     presentation_steps = np.arange(data.shape[0])
-    line_target, = ax.plot(presentation_steps[mask], data[mask], color='green', label='Target', alpha=0.7)
-    data = plot_result_values['out_plot'][batch, :, 1]
-    out_avg = data[mask]
-    out_avg = np.ones_like(out_avg) * np.mean(out_avg)
-    line_out, = ax.plot(presentation_steps[mask], out_avg, color='blue', label='avg.out.', alpha=0.7)
-    # data[np.invert(mask)] = -1
-    # lines = []
-    # ind_nt = np.argwhere(data != -1)
-    # for idx in ind_nt.tolist():
-    #     i = idx[0]
-    #     lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    # lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='Target')
-    # ax.add_collection(lc_t)  # plot target segments
-
-    # # plot output per tau_char
-    # data = plot_result_values['out_plot_char_step'][batch]
-    # data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
-    # data[np.invert(mask)] = -1
-    # lines = []
-    # ind_nt = np.argwhere(data != -1)
-    # for idx in ind_nt.tolist():
-    #     i = idx[0]
-    #     lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    # lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='Output')
-    # ax.add_collection(lc_o)  # plot target segments
-
+    line_target, = ax.plot(presentation_steps[mask], data[mask], color='blue', label='Target', alpha=0.7)
+    # data = plot_result_values['out_plot'][batch, :, 1]
+    # out_avg = data[mask]
+    # out_avg = np.ones_like(out_avg) * np.mean(out_avg)
+    # line_out, = ax.plot(presentation_steps[mask], out_avg, color='blue', label='avg.out.', alpha=0.7)
     # plot softmax of psp-s per dt for more intuitive monitoring
     # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
     output2 = plot_result_values['out_plot'][batch, :, 1]
     presentation_steps = np.arange(output2.shape[0])
     ax.set_yticks([0, 0.5, 1])
-    ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     ax.set_ylabel('Output')
-    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='Output', alpha=0.7)
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    line_output2, = ax.plot(presentation_steps, output2, color='green', label='Output', alpha=0.7)
     ax.axis([0, presentation_steps[-1] + 1, -0.3, 1.1])
-    ax.legend(handles=[line_output2, line_target, line_out], loc='lower center', fontsize=7,
-              bbox_to_anchor=(0.5, -0.05), ncol=3)
+    ax.legend(handles=[line_output2, line_target], loc='lower left', fontsize=7, ncol=3)
+    ax.set_xticklabels([])
+
+    # PLOT SPIKES
+    ax = ax_list[3]
+    data = plot_result_values['z']
+    data = data[batch]
+    raster_plot(ax, data, linewidth=0.3)
+    ax.set_ylabel('LSNN')
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     ax.set_xticklabels([])
 
     # debug plot for psp-s or biases
     plot_param = 'b_con'  # or 'psp'
     ax.set_xticklabels([])
     ax = ax_list[-1]
-    ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('PSPs' if plot_param == 'psp' else 'Threshold')
-    sub_data = plot_result_values[plot_param][batch]
-    if plot_param == 'b_con':
-        sub_data = sub_data + thr
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    ax.set_ylabel('Threshold')
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    sub_data = plot_result_values['b_con'][batch]
+    sub_data = sub_data + thr
     vars = np.var(sub_data, axis=0)
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
     cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
