@@ -35,8 +35,8 @@ tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set'
 tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 2, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 2, 'number of input units.')
-tf.app.flags.DEFINE_integer('n_regular', 60, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 20, 'number of controller units')
+tf.app.flags.DEFINE_integer('n_regular', 80, 'number of recurrent units.')
+tf.app.flags.DEFINE_integer('n_adaptive', 80, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
@@ -47,15 +47,16 @@ tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 1, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 50, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
-tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
+tf.app.flags.DEFINE_integer('lr_decay_every', 40, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
+tf.app.flags.DEFINE_integer('xor_delay', 100, 'Expected delay in character steps. Must be <= seq_len - 2')
 ##
 tf.app.flags.DEFINE_float('stop_crit', 0.05, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.005, 'Base learning rate.')
-tf.app.flags.DEFINE_float('lr_decay', 0.3, 'Decaying factor')
+tf.app.flags.DEFINE_float('lr_decay', 0.5, 'Decaying factor')
 tf.app.flags.DEFINE_float('reg', 1e-1, 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
@@ -162,7 +163,7 @@ init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=t
 recall_charac_mask = recall_mask
 
 
-def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None):
+def get_data_dict(batch_size, pulse_delay=FLAGS.xor_delay):
     # p_sr = 1/(1 + FLAGS.seq_delay)
     # spk_data, is_recall_data, target_seq_data, memory_seq_data, in_data, target_data = generate_storerecall_data(
     #     batch_size=batch_size,
@@ -176,7 +177,8 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
     #     override_input=override_input,
     # )
     input_data, target_data, target_mask, targets = generate_xor_input(batch_size=batch_size,
-                                                                       length=FLAGS.seq_len * FLAGS.tau_char)
+                                                                       length=FLAGS.seq_len * FLAGS.tau_char,
+                                                                       pulse_delay=pulse_delay)
     data_dict = {input_spikes: input_data, target_nums: target_data, recall_mask: target_mask,
                  target_sequence: targets, batch_size_holder: batch_size}
 
@@ -408,6 +410,7 @@ plot_result_tensors = {'input_spikes': input_spikes,
                        }
 t_train = 0
 t_ref = time()
+current_delay = 50
 for k_iter in range(FLAGS.n_iter):
 
     if k_iter > 0 and np.mod(k_iter, FLAGS.lr_decay_every) == 0:
@@ -531,10 +534,16 @@ for k_iter in range(FLAGS.n_iter):
             break
 
     # train
-    train_dict = get_data_dict(FLAGS.batch_train)
+    train_dict = get_data_dict(FLAGS.batch_train, pulse_delay=current_delay)
     feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
     t0 = time()
-    final_state_value, _, _ = sess.run([final_state, train_step, update_regularization_coeff], feed_dict=train_dict)
+    final_state_value, _, _, train_err = sess.run([final_state, train_step, update_regularization_coeff, recall_errors],
+                                                  feed_dict=train_dict)
+    print("train_err ", train_err)
+    if train_err < 0.1 and current_delay < FLAGS.xor_delay:
+        current_delay += 50
+        print("increased train delay to ", current_delay)
+
     last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
 
