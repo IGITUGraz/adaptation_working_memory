@@ -5,6 +5,7 @@ from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_b
 
 import datetime
 import os
+import json
 import socket
 from time import time
 
@@ -33,30 +34,30 @@ tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored result
 tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
-tf.app.flags.DEFINE_integer('n_charac', 2, 'number of characters in the recall task')
+tf.app.flags.DEFINE_integer('n_charac', 3, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 2, 'number of input units.')
-tf.app.flags.DEFINE_integer('n_regular', 80, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 80, 'number of controller units')
+tf.app.flags.DEFINE_integer('n_regular', 40, 'number of recurrent units.')
+tf.app.flags.DEFINE_integer('n_adaptive', 40, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 200, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 2000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 1, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 50, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
-tf.app.flags.DEFINE_integer('lr_decay_every', 40, 'Decay every')
-tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
+tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
+tf.app.flags.DEFINE_integer('print_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('xor_delay', 100, 'Expected delay in character steps. Must be <= seq_len - 2')
 ##
 tf.app.flags.DEFINE_float('stop_crit', 0.05, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
-tf.app.flags.DEFINE_float('learning_rate', 0.005, 'Base learning rate.')
-tf.app.flags.DEFINE_float('lr_decay', 0.5, 'Decaying factor')
+tf.app.flags.DEFINE_float('learning_rate', 0.02, 'Base learning rate.')
+tf.app.flags.DEFINE_float('lr_decay', 0.7, 'Decaying factor')
 tf.app.flags.DEFINE_float('reg', 1e-1, 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
@@ -145,9 +146,16 @@ file_reference = '{}_{}_seqlen{}_seqdelay{}_in{}_R{}_A{}_lr{}_tauchar{}_comment{
     FLAGS.learning_rate, FLAGS.tau_char, FLAGS.comment)
 file_reference = file_reference + '_taua' + str(FLAGS.tau_a) + '_beta' + str(FLAGS.beta)
 print('FILE REFERENCE: ' + file_reference)
+# Save parameters and training log
+try:
+    flag_dict = FLAGS.flag_values_dict()
+except:
+    print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
+    flag_dict = FLAGS.__flags
+print(json.dumps(flag_dict, indent=4))
 
 # Generate input
-input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, 2),
+input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in),
                               name='InputSpikes')  # MAIN input spike placeholder
 target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
                              name='TargetNums')  # Lists of target characters of the recall task
@@ -178,7 +186,7 @@ def get_data_dict(batch_size, pulse_delay=FLAGS.xor_delay):
     # )
     input_data, target_data, target_mask, targets = generate_xor_input(batch_size=batch_size,
                                                                        length=FLAGS.seq_len * FLAGS.tau_char,
-                                                                       pulse_delay=pulse_delay)
+                                                                       expected_delay=pulse_delay)
     data_dict = {input_spikes: input_data, target_nums: target_data, recall_mask: target_mask,
                  target_sequence: targets, batch_size_holder: batch_size}
 
@@ -207,20 +215,17 @@ with tf.name_scope('RecallLoss'):
         w_out = tf.get_variable(name='out_weight', shape=[n_neurons, n_output_symbols])
 
     out = einsum_bij_jk_to_bik(psp, w_out)
-    # out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
-    # Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
     Y_predict = tf.boolean_mask(out, recall_charac_mask, name='Prediction')
-    # Y_predict = tf.reduce_mean(Y_predict, axis=1)
-    # Y = tf.reduce_mean(target_nums_at_recall, axis=1)
 
-    loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_nums_at_recall,
-                                                                                logits=Y_predict))
+    loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_nums,
+                                                                                logits=out))
 
     with tf.name_scope('PlotNodes'):
         out_plot = tf.nn.softmax(out)
         # out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
-    # _, recall_errors, false_sentence_id_list = error_rate(out_char_step, target_nums, input_nums, n_charac)
+    target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
+    Y = tf.one_hot(target_nums_at_recall, depth=n_output_symbols, name='Target')
     Y_predict_hard = tf.argmax(Y_predict, axis=1)
     all_accuracy = tf.cast(tf.equal(Y_predict_hard, tf.argmax(Y, axis=1)), dtype=tf.float32)
     recall_accuracy = tf.reduce_mean(all_accuracy)
@@ -307,7 +312,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     data = data[batch]
     presentation_steps = np.arange(data.shape[0])
     ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-    ax.axis([0, len(data), -0.5, 0.5])
+    ax.axis([0, len(data), -1.1, 1.1])
     ax.set_ylabel('Input')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     ax.set_xticklabels([])
@@ -318,7 +323,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     data = data[batch]
     presentation_steps = np.arange(data.shape[0])
     ax.plot(presentation_steps, data[:, 1], color='red', label='Go-cue', alpha=0.7)
-    ax.axis([0, len(data), -0.5, 0.5])
+    ax.axis([0, len(data), -1.1, 1.1])
     ax.set_ylabel('Go-cue')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     ax.set_xticklabels([])
@@ -326,25 +331,34 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     # PLOT OUTPUT AND TARGET
     ax = ax_list[2]
     mask = plot_result_values['recall_charac_mask'][batch]
-    data = plot_result_values['target_nums'][batch]
-    presentation_steps = np.arange(data.shape[0])
-    line_target, = ax.plot(presentation_steps[mask], data[mask], color='blue', label='Target', alpha=0.7)
-    # data = plot_result_values['out_plot'][batch, :, 1]
-    # out_avg = data[mask]
-    # out_avg = np.ones_like(out_avg) * np.mean(out_avg)
-    # line_out, = ax.plot(presentation_steps[mask], out_avg, color='blue', label='avg.out.', alpha=0.7)
-    # plot softmax of psp-s per dt for more intuitive monitoring
-    # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch, :, 1]
-    presentation_steps = np.arange(output2.shape[0])
+    raw_out = plot_result_values['out_plot'][batch]
+    presentation_steps = np.arange(raw_out.shape[0])
+    # processed target
+    data = plot_result_values['target_nums'][batch].astype(float)
+    data[data == 2] = 0.5
+    line_target, = ax.plot(presentation_steps[:], data[:], color='black', label='Target', alpha=0.7)
+    # processed output
+    output0 = 1. - raw_out[:, 0]
+    output1 = raw_out[:, 1]
+    combined_output = (output0 + output1)/2
+    presentation_steps = np.arange(combined_output.shape[0])
+    line_output2, = ax.plot(presentation_steps, combined_output, color='green', label='Output', alpha=0.7)
+    line_handles = [line_output2, line_target]
+    # raw output
+    # line_output_raw0, = ax.plot(presentation_steps, raw_out[:, 0], color='red', label='0', alpha=0.2)
+    # line_output_raw1, = ax.plot(presentation_steps, raw_out[:, 1], color='blue', label='1', alpha=0.2)
+    # line_output_raw2, = ax.plot(presentation_steps, raw_out[:, 2], color='yellow', label='2', alpha=0.4)
+    # line_handles.append(line_output_raw0)
+    # line_handles.append(line_output_raw1)
+    # line_handles.append(line_output_raw2)
+
     ax.set_yticks([0, 0.5, 1])
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     ax.set_ylabel('Output')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    line_output2, = ax.plot(presentation_steps, output2, color='green', label='Output', alpha=0.7)
     ax.axis([0, presentation_steps[-1] + 1, -0.3, 1.1])
-    ax.legend(handles=[line_output2, line_target], loc='lower left', fontsize=7, ncol=3)
+    ax.legend(handles=line_handles, loc='lower left', fontsize=7, ncol=len(line_handles))
     ax.set_xticklabels([])
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
 
     # PLOT SPIKES
     ax = ax_list[3]
@@ -410,7 +424,6 @@ plot_result_tensors = {'input_spikes': input_spikes,
                        }
 t_train = 0
 t_ref = time()
-current_delay = 50
 for k_iter in range(FLAGS.n_iter):
 
     if k_iter > 0 and np.mod(k_iter, FLAGS.lr_decay_every) == 0:
@@ -534,18 +547,11 @@ for k_iter in range(FLAGS.n_iter):
             break
 
     # train
-    train_dict = get_data_dict(FLAGS.batch_train, pulse_delay=current_delay)
+    train_dict = get_data_dict(FLAGS.batch_train, pulse_delay=FLAGS.xor_delay)
     feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
     t0 = time()
     final_state_value, _, _, train_err = sess.run([final_state, train_step, update_regularization_coeff, recall_errors],
                                                   feed_dict=train_dict)
-    print("train_err ", train_err)
-    if train_err < 0.1 and current_delay < FLAGS.xor_delay:
-        current_delay += 20
-        print("increased train delay to ", current_delay)
-        old_lr = sess.run(learning_rate)
-        new_lr = sess.run(decay_learning_rate_op)
-        print('Decaying learning rate: {:.2g} -> {:.2g}'.format(old_lr, new_lr))
 
     last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
@@ -564,13 +570,6 @@ if FLAGS.save_data:
     saver = tf.train.Saver()
     saver.save(sess, os.path.join(full_path, 'session'))
     saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
-
-    # Save parameters and training log
-    try:
-        flag_dict = FLAGS.flag_values_dict()
-    except:
-        print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
-        flag_dict = FLAGS.__flags
 
     results = {
         'error': validation_error_list[-1],
@@ -592,14 +591,19 @@ if FLAGS.save_data:
     test_errors = []
     for i in range(16):
         test_dict = get_data_dict(FLAGS.batch_test)
-        feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
-            cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
+        feed_dict_with_placeholder_container(test_dict, init_state_holder, last_final_state_state_training_pointer[0])
 
         results_values, plot_results_values, in_spk, spk, spk_con, target_nums_np = sess.run(
             [results_tensors, plot_result_tensors, input_spikes, z, z_con, target_nums],
             feed_dict=test_dict)
         # last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
+        if FLAGS.do_plot and FLAGS.monitor_plot:
+            update_plot(plot_results_values)
+            tmp_path = os.path.join(full_path,
+                                    'figure_test' + start_time.strftime("%H%M") + '_' +
+                                    str(i) + '.pdf')
+            fig.savefig(tmp_path, format='pdf')
 
     print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {})'''
           .format(np.mean(test_errors), np.std(test_errors), FLAGS.batch_test))
