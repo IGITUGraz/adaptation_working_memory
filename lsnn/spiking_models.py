@@ -110,12 +110,16 @@ def weight_matrix_with_delay_dimension(w, d, n_delay):
 
 
 # PSP on output layer
-def exp_convolve(tensor, decay):  # tensor shape (trial, time, neuron)
+def exp_convolve(tensor, decay, init=None):  # tensor shape (trial, time, neuron)
     with tf.name_scope('ExpConvolve'):
         assert tensor.dtype in [tf.float16, tf.float32, tf.float64]
 
         tensor_time_major = tf.transpose(tensor, perm=[1, 0, 2])
-        initializer = tf.zeros_like(tensor_time_major[0])
+        if init is not None:
+            assert str(init.get_shape()) == str(tensor_time_major[0].get_shape())  # must be batch x neurons
+            initializer = init
+        else:
+            initializer = tf.zeros_like(tensor_time_major[0])
 
         filtered_tensor = tf.scan(lambda a, x: a * decay + (1 - decay) * x, tensor_time_major, initializer=initializer)
         filtered_tensor = tf.transpose(filtered_tensor, perm=[1, 0, 2])
@@ -342,7 +346,7 @@ class ALIF(LIF):
                  tau_adaptation=200., beta=1.6,
                  rewiring_connectivity=-1, dampening_factor=0.3,
                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
-                 V0=1.):
+                 V0=1., add_current=0.):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -376,6 +380,7 @@ class ALIF(LIF):
         self.tau_adaptation = tau_adaptation
         self.beta = beta
         self.decay_b = np.exp(-dt / tau_adaptation)
+        self.add_current = add_current
 
     @property
     def output_size(self):
@@ -422,7 +427,9 @@ class ALIF(LIF):
             z_buffer=state.z_buffer,
             i_future_buffer=i_future_buffer,
             decay=self._decay,
-            thr=thr)
+            thr=thr,
+            add_current=self.add_current,
+        )
 
         new_z_buffer = tf_roll(state.z_buffer, new_z, axis=2)
         new_i_future_buffer = tf_roll(i_future_buffer, axis=2)

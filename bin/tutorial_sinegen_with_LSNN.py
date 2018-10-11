@@ -1,5 +1,5 @@
-from bin.tutorial_storerecall_utils import generate_poisson_noise_np
-from bin.tutorial_temporalXOR_utils import generate_xor_input
+from tutorial_storerecall_utils import generate_poisson_noise_np
+# from bin.tutorial_temporalXOR_utils import generate_xor_input
 from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik
 # import matplotlib
 # matplotlib.use('Agg')
@@ -33,22 +33,23 @@ tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation se
 tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 1, 'number of characters in the recall task')
+tf.app.flags.DEFINE_integer('n_out', 1, 'number of output neurons (number of target curves)')
 tf.app.flags.DEFINE_integer('n_in', 100, 'number of input units.')
-tf.app.flags.DEFINE_integer('n_regular', 40, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 40, 'number of controller units')
+tf.app.flags.DEFINE_integer('n_regular', 100, 'number of recurrent units.')
+tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 200, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 2000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('seq_len', 600, 'Number of character steps')
+tf.app.flags.DEFINE_integer('seq_len', 1000, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 100, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 ##
-tf.app.flags.DEFINE_float('stop_crit', 0.001, 'Stopping criterion. Stops training if error goes below this value')
+tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
@@ -63,6 +64,7 @@ tf.app.flags.DEFINE_float('dampening_factor', 0.3, '')
 tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike')
+tf.app.flags.DEFINE_float('add_current', .0, 'constant current to feed to all neurons')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -130,11 +132,15 @@ else:
 
 # Generate the cell
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
+if FLAGS.tau_a_spread:
+    tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
+else:
+    tau_a_spread = FLAGS.tau_a
 cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=thr,
+            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-            dampening_factor=FLAGS.dampening_factor,
+            dampening_factor=FLAGS.dampening_factor, add_current=FLAGS.add_current
             )
 
 cell_name = type(cell).__name__
@@ -157,35 +163,51 @@ print(json.dumps(flag_dict, indent=4))
 # Generate input
 input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in),
                               name='InputSpikes')  # MAIN input spike placeholder
-target_nums = tf.placeholder(dtype=tf.float32, shape=(None, None),
+target_nums = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_out),
                              name='TargetNums')  # Lists of target characters of the recall task
 
 batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that contains the batch size
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
-# recall_charac_mask = tf.equal(input_nums, recall_symbol, name='RecallCharacMask')
+psp_out_state_holder = tf.placeholder(dtype=tf.float32, shape=(None, FLAGS.n_regular + FLAGS.n_adaptive), name='PspOutState')
 
 
 frozen_noise_rates = np.zeros((FLAGS.seq_len, FLAGS.n_in))
 frozen_noise_rates[:, :] = FLAGS.f0 / 1000
 frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
 # frozen_noise_spikes = np.zeros_like(frozen_noise_spikes)  # no input
-sine1Hz = np.sin(np.linspace(0, np.pi*2*(FLAGS.seq_len//1000), FLAGS.seq_len))
-sine2Hz = np.sin(np.linspace(0, np.pi*2*(FLAGS.seq_len//500), FLAGS.seq_len))
-sine3Hz = np.sin(np.linspace(0, np.pi*2*(FLAGS.seq_len//333), FLAGS.seq_len))
-sine5Hz = np.sin(np.linspace(0, np.pi*2*(FLAGS.seq_len//200), FLAGS.seq_len))
-# target_sine = sum([np.sin(np.linspace(0, np.pi*2*(FLAGS.seq_len//T), FLAGS.seq_len)) for T in (1000, 500, 333, 200)])
-target_sine = sine1Hz + sine2Hz + sine3Hz + sine5Hz if FLAGS.sum_sines else \
-    np.sin(np.linspace(0, np.pi*2*2, FLAGS.seq_len))  # two full sine periods otherwise
+# for i in range(10):  # clock signal like
+#     frozen_noise_spikes[i*10*10:(i+1)*10*10:2, i*10:(i+1)*10] = 1.
+
+
+def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1., 1., 1.], phases=[0., 0., 0., 0.]):
+    if periods is None:
+        periods = [np.random.uniform(low=100, high=1000) for i in range(n_sines)]
+    assert n_sines == len(periods)
+    sines = []
+    weights = np.random.uniform(low=0.5, high=2, size=n_sines) if weights is None else weights
+    phases = np.random.uniform(low=0., high=np.pi*2, size=n_sines) if phases is None else phases
+    for i in range(n_sines):
+        sine = np.sin(np.linspace(0+phases[i], np.pi*2*(FLAGS.seq_len//periods[i])+phases[i], FLAGS.seq_len))
+        sines.append(sine*weights[i])
+    return sum(sines)
+
+ts = [np.expand_dims(sum_of_sines_target(weights=None, phases=[i * np.pi/2 for _ in range(4)]), axis=0) for i in range(FLAGS.n_out)]
+# rnd = [[rd.uniform() for _ in range(4)] for _ in range(FLAGS.n_out)]
+# ts = [np.expand_dims(sum_of_sines_target(weights=[(i+1)*2*rnd[i][zn] for zn in range(4)]), axis=0) for i in range(FLAGS.n_out)]
+target_sine = np.stack(ts, axis=2)
 
 
 def get_data_dict(batch_size):
     spikes = np.zeros((batch_size, FLAGS.seq_len, FLAGS.n_in))
+    # frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
     for b in range(batch_size):
         spikes[b] = frozen_noise_spikes
 
-    target_data = np.tile(target_sine, (batch_size, 1))  # batch x seq_len
+    target_data = np.tile(target_sine, (batch_size, 1, 1))  # batch x seq_len
+    psp_out_state = np.zeros(shape=(batch_size, FLAGS.n_regular + FLAGS.n_adaptive))
 
-    data_dict = {input_spikes: spikes, target_nums: target_data, batch_size_holder: batch_size}
+    data_dict = {input_spikes: spikes, target_nums: target_data, batch_size_holder: batch_size,
+                 psp_out_state_holder: psp_out_state}
 
     return data_dict
 
@@ -195,6 +217,7 @@ z, b_con = z_stack
 z_con = []
 z_all = z
 
+
 with tf.name_scope('RecallLoss'):
     target_nums_at_recall = target_nums
     Y = target_nums
@@ -202,21 +225,18 @@ with tf.name_scope('RecallLoss'):
     # MTP models do not use controller (modulator) population for output
     out_neurons = z_all
     n_neurons = out_neurons.get_shape()[2]
-    psp = exp_convolve(out_neurons, decay=decay)
+    psp = exp_convolve(out_neurons, decay=decay, init=psp_out_state_holder)
 
     if 0 < FLAGS.rewiring_connectivity and 0 < FLAGS.readout_rewiring_connectivity:
-        w_out, w_out_sign, w_out_var, _ = weight_sampler(FLAGS.n_regular + FLAGS.n_adaptive, n_output_symbols,
+        w_out, w_out_sign, w_out_var, _ = weight_sampler(FLAGS.n_regular + FLAGS.n_adaptive, FLAGS.n_out,
                                                          FLAGS.readout_rewiring_connectivity,
                                                          neuron_sign=rec_neuron_sign)
     else:
-        w_out = tf.get_variable(name='out_weight', shape=[n_neurons, n_output_symbols])
+        w_out = tf.get_variable(name='out_weight', shape=[n_neurons, FLAGS.n_out])
 
     out = einsum_bij_jk_to_bik(psp, w_out)
-    # out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
-    # Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
-    Y_predict = tf.squeeze(out)
-    # Y_predict = tf.reduce_mean(Y_predict, axis=1)
-    # Y = tf.reduce_mean(target_nums_at_recall, axis=1)
+    # Y_predict = tf.squeeze(out)
+    Y_predict = out
 
     loss_recall = tf.reduce_mean((target_nums - Y_predict) ** 2)
 
@@ -226,6 +246,7 @@ with tf.name_scope('RecallLoss'):
     _, tmp_diff_var = tf.nn.moments(target_nums - Y_predict, axes=[0, 1])
     _, tmp_target_var = tf.nn.moments(target_nums, axes=[0, 1])
     depasq_err = tmp_diff_var / tmp_target_var
+    depasq_err = tf.reduce_mean(depasq_err)
 
 
 # Target regularization
@@ -278,6 +299,7 @@ sess.run(tf.global_variables_initializer())
 last_final_state_state_training_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32))]
 last_final_state_state_validation_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_val, dtype=tf.float32))]
 last_final_state_state_testing_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_test, dtype=tf.float32))]
+last_psp_state = np.zeros(shape=(FLAGS.batch_val, FLAGS.n_regular + FLAGS.n_adaptive))
 
 # Open an interactive matplotlib window to plot in real time
 if FLAGS.do_plot and FLAGS.interactive_plot:
@@ -319,20 +341,22 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     ax = ax_list[1]
     data = plot_result_values['target_nums'][batch]
     presentation_steps = np.arange(data.shape[0])
-    line_target, = ax.plot(presentation_steps[:], data[:], color='blue', label='Target', alpha=0.7)
+    for i in range(data.shape[1]):
+        line_target, = ax.plot(presentation_steps[:], data[:, i], color='blue', label='Target', alpha=0.7)
     # data = plot_result_values['out_plot'][batch, :, 1]
     # out_avg = data[mask]
     # out_avg = np.ones_like(out_avg) * np.mean(out_avg)
     # line_out, = ax.plot(presentation_steps[mask], out_avg, color='blue', label='avg.out.', alpha=0.7)
     # plot softmax of psp-s per dt for more intuitive monitoring
     # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch, :, 0]
+    output2 = plot_result_values['out_plot'][batch]
     presentation_steps = np.arange(output2.shape[0])
     ax.set_yticks([-1, 0, 1])
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     ax.set_ylabel('Output')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    line_output2, = ax.plot(presentation_steps, output2, color='green', label='Output', alpha=0.7)
+    for i in range(data.shape[1]):
+        line_output2, = ax.plot(presentation_steps, output2[:, i], color='green', label='Output', alpha=0.7)
     ax.set_xlim([0, presentation_steps[-1] + 1])
     ax.legend(handles=[line_output2, line_target], loc='lower left', fontsize=7, ncol=3)
     ax.set_xticklabels([])
@@ -415,6 +439,7 @@ for k_iter in range(FLAGS.n_iter):
     t0 = time()
     val_dict = get_data_dict(FLAGS.batch_val)
     feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
+    val_dict[psp_out_state_holder] = last_psp_state
 
     plot_result_tensors['psp'] = psp
     # plot_result_tensors['out_plot_char_step'] = out_plot_char_step
@@ -427,6 +452,7 @@ for k_iter in range(FLAGS.n_iter):
     results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
     last_final_state_state_validation_pointer[0] = results_values['final_state']
     last_final_state_state_testing_pointer[0] = results_values['final_state']
+    last_psp_state = plot_results_values['psp'][:, -1, :]
     t_run = time() - t0
 
     # Storage of the results
@@ -441,7 +467,8 @@ for k_iter in range(FLAGS.n_iter):
 
         print('''Iteration {}, statistics on the validation set average error {:.2g} +- {:.2g} (trial averaged) DePasq Error {:.2g}'''
               .format(k_iter, np.mean(validation_error_list[-print_every:]),
-                      np.std(validation_error_list[-print_every:]), results_values['depasq_err']))
+                      np.std(validation_error_list[-print_every:]),
+                      results_values['depasq_err']))
 
         def get_stats(v):
             if np.size(v) == 0:
