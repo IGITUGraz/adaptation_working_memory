@@ -54,7 +54,7 @@ tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling 
 tf.app.flags.DEFINE_float('tau_a', 200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
-tf.app.flags.DEFINE_float('lr_decay', 0.3, 'Decaying factor')
+tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
 tf.app.flags.DEFINE_float('reg', 1., 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
@@ -76,8 +76,6 @@ tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
 tf.app.flags.DEFINE_bool('sum_sines', True, '')
-if FLAGS.sum_sines:
-    FLAGS.seq_len = 1000
 
 # Run asserts to check seq_delay and seq_len relation is ok
 assert FLAGS.seq_len > FLAGS.seq_delay * 2 + 200
@@ -174,9 +172,17 @@ psp_out_state_holder = tf.placeholder(dtype=tf.float32, shape=(None, FLAGS.n_reg
 frozen_noise_rates = np.zeros((FLAGS.seq_len, FLAGS.n_in))
 frozen_noise_rates[:, :] = FLAGS.f0 / 1000
 frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
-# frozen_noise_spikes = np.zeros_like(frozen_noise_spikes)  # no input
-# for i in range(10):  # clock signal like
-#     frozen_noise_spikes[i*10*10:(i+1)*10*10:2, i*10:(i+1)*10] = 1.
+
+frozen_noise_spikes = np.zeros_like(frozen_noise_spikes)  # no input
+# n_of_steps = 4
+# input_spike_every = 10
+# assert FLAGS.seq_len % n_of_steps == 0
+# step_len = int(FLAGS.seq_len / n_of_steps)
+# step_group = int(FLAGS.n_in / n_of_steps)
+# for i in range(n_of_steps):  # clock signal like
+#     frozen_noise_spikes[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+frozen_noise_spikes[0:50, :] = 1.
+# frozen_noise_spikes[500:550, :] = 1.
 
 
 def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1., 1., 1.], phases=[0., 0., 0., 0.]):
@@ -191,7 +197,15 @@ def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1
         sines.append(sine*weights[i])
     return sum(sines)
 
-ts = [np.expand_dims(sum_of_sines_target(weights=None, phases=[i * np.pi/2 for _ in range(4)]), axis=0) for i in range(FLAGS.n_out)]
+# ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[8000, 4000, 2000], weights=None, phases=[0., 0., 0.]),
+#                      axis=0) for i in range(FLAGS.n_out)]
+# ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[2000, 1000, 500], weights=None, phases=[0., 0., 0.]),
+#                      axis=0) for i in range(FLAGS.n_out)]
+ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[1000, 333, 200], weights=None, phases=[0., 0., 0.]),
+                     axis=0) for i in range(FLAGS.n_out)]
+# ts = [np.expand_dims(sum_of_sines_target(n_sines=2, periods=[500, 250], weights=None, phases=[0., 0.]),
+#                      axis=0) for i in range(FLAGS.n_out)]
+# ts = [np.expand_dims(sum_of_sines_target(weights=None, phases=[i * np.pi/2 for _ in range(4)]), axis=0) for i in range(FLAGS.n_out)]
 # rnd = [[rd.uniform() for _ in range(4)] for _ in range(FLAGS.n_out)]
 # ts = [np.expand_dims(sum_of_sines_target(weights=[(i+1)*2*rnd[i][zn] for zn in range(4)]), axis=0) for i in range(FLAGS.n_out)]
 target_sine = np.stack(ts, axis=2)
@@ -331,7 +345,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     data = data[batch]
     presentation_steps = np.arange(data.shape[0])
     # ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-    raster_plot(ax, data, linewidth=0.4, color='black')
+    raster_plot(ax, data[:, ::5], linewidth=0.4, color='black')
     ax.set_xlim([0, len(data)])
     ax.set_ylabel('Input')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
