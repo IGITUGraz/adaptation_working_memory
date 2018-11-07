@@ -34,7 +34,7 @@ tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set'
 tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 1, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_out', 1, 'number of output neurons (number of target curves)')
-tf.app.flags.DEFINE_integer('n_in', 100, 'number of input units.')
+tf.app.flags.DEFINE_integer('n_in', 80, 'number of input units.')
 tf.app.flags.DEFINE_integer('n_regular', 100, 'number of recurrent units.')
 tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
@@ -174,13 +174,16 @@ frozen_noise_rates[:, :] = FLAGS.f0 / 1000
 frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
 
 frozen_noise_spikes = np.zeros_like(frozen_noise_spikes)  # no input
+frozen_noise_spikes2 = np.zeros_like(frozen_noise_spikes)  # no input
 n_of_steps = 4
 input_spike_every = 10
 assert FLAGS.seq_len % n_of_steps == 0
 step_len = int(FLAGS.seq_len / n_of_steps)
-step_group = int(FLAGS.n_in / n_of_steps)
+step_group = int(FLAGS.n_in / (n_of_steps * 2))
+group2_begin = int(FLAGS.n_in / 2)
 for i in range(n_of_steps):  # clock signal like
     frozen_noise_spikes[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+    frozen_noise_spikes2[i*step_len:(i+1)*step_len:input_spike_every, group2_begin+i*step_group:group2_begin+(i+1)*step_group] = 1.
 # frozen_noise_spikes[0:50, :] = 1.
 # frozen_noise_spikes[500:550, :] = 1.
 
@@ -197,27 +200,26 @@ def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1
         sines.append(sine*weights[i])
     return sum(sines)
 
-# ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[8000, 4000, 2000], weights=None, phases=[0., 0., 0.]),
-#                      axis=0) for i in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[2000, 1000, 500], weights=None, phases=[0., 0., 0.]),
-#                      axis=0) for i in range(FLAGS.n_out)]
 ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[1000, 333, 200], weights=None, phases=[0., 0., 0.]),
                      axis=0) for i in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(n_sines=2, periods=[500, 250], weights=None, phases=[0., 0.]),
-#                      axis=0) for i in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(weights=None, phases=[i * np.pi/2 for _ in range(4)]), axis=0) for i in range(FLAGS.n_out)]
-# rnd = [[rd.uniform() for _ in range(4)] for _ in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(weights=[(i+1)*2*rnd[i][zn] for zn in range(4)]), axis=0) for i in range(FLAGS.n_out)]
+ts2 = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[1000, 500, 250], weights=None, phases=[0., 0., 0.]),
+                      axis=0) for i in range(FLAGS.n_out)]
 target_sine = np.stack(ts, axis=2)
+target_sine2 = np.stack(ts2, axis=2)
 
 
 def get_data_dict(batch_size):
     spikes = np.zeros((batch_size, FLAGS.seq_len, FLAGS.n_in))
+    target_data = np.zeros((batch_size, FLAGS.seq_len, 1))
     # frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
     for b in range(batch_size):
-        spikes[b] = frozen_noise_spikes
+        if rd.random() < 0.5:
+            spikes[b] = frozen_noise_spikes
+            target_data[b] = target_sine
+        else:
+            spikes[b] = frozen_noise_spikes2
+            target_data[b] = target_sine2
 
-    target_data = np.tile(target_sine, (batch_size, 1, 1))  # batch x seq_len
     psp_out_state = np.zeros(shape=(batch_size, FLAGS.n_regular + FLAGS.n_adaptive))
 
     data_dict = {input_spikes: spikes, target_nums: target_data, batch_size_holder: batch_size,
@@ -345,7 +347,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     data = data[batch]
     presentation_steps = np.arange(data.shape[0])
     # ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-    raster_plot(ax, data[:, ::5], linewidth=0.4, color='black')
+    raster_plot(ax, data[:, ::2], linewidth=0.4, color='black')
     ax.set_xlim([0, len(data)])
     ax.set_ylabel('Input')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)

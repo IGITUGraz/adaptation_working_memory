@@ -174,13 +174,22 @@ frozen_noise_rates[:, :] = FLAGS.f0 / 1000
 frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
 
 frozen_noise_spikes = np.zeros_like(frozen_noise_spikes)  # no input
+frozen_noise_spikes2 = np.zeros_like(frozen_noise_spikes)  # no input
+frozen_noise_spikes3 = np.zeros_like(frozen_noise_spikes)  # no input
+frozen_noise_spikes4 = np.zeros_like(frozen_noise_spikes)  # no input
+frozen_noise_spikes5 = np.zeros_like(frozen_noise_spikes)  # no input
 n_of_steps = 4
 input_spike_every = 10
 assert FLAGS.seq_len % n_of_steps == 0
 step_len = int(FLAGS.seq_len / n_of_steps)
-step_group = int(FLAGS.n_in / n_of_steps)
+step_group = int(FLAGS.n_in / (n_of_steps * 5))
+group2_begin = int(FLAGS.n_in / 5)
 for i in range(n_of_steps):  # clock signal like
     frozen_noise_spikes[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+    frozen_noise_spikes2[i*step_len:(i+1)*step_len:input_spike_every, group2_begin+i*step_group:group2_begin+(i+1)*step_group] = 1.
+    frozen_noise_spikes3[i*step_len:(i+1)*step_len:input_spike_every, (group2_begin*2)+i*step_group:(group2_begin*2)+(i+1)*step_group] = 1.
+    frozen_noise_spikes4[i*step_len:(i+1)*step_len:input_spike_every, (group2_begin*3)+i*step_group:(group2_begin*3)+(i+1)*step_group] = 1.
+    frozen_noise_spikes5[i*step_len:(i+1)*step_len:input_spike_every, (group2_begin*4)+i*step_group:(group2_begin*4)+(i+1)*step_group] = 1.
 # frozen_noise_spikes[0:50, :] = 1.
 # frozen_noise_spikes[500:550, :] = 1.
 
@@ -197,27 +206,40 @@ def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1
         sines.append(sine*weights[i])
     return sum(sines)
 
-# ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[8000, 4000, 2000], weights=None, phases=[0., 0., 0.]),
-#                      axis=0) for i in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[2000, 1000, 500], weights=None, phases=[0., 0., 0.]),
-#                      axis=0) for i in range(FLAGS.n_out)]
-ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[1000, 333, 200], weights=None, phases=[0., 0., 0.]),
-                     axis=0) for i in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(n_sines=2, periods=[500, 250], weights=None, phases=[0., 0.]),
-#                      axis=0) for i in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(weights=None, phases=[i * np.pi/2 for _ in range(4)]), axis=0) for i in range(FLAGS.n_out)]
-# rnd = [[rd.uniform() for _ in range(4)] for _ in range(FLAGS.n_out)]
-# ts = [np.expand_dims(sum_of_sines_target(weights=[(i+1)*2*rnd[i][zn] for zn in range(4)]), axis=0) for i in range(FLAGS.n_out)]
+ts = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[1000, 333, 200], weights=None, phases=[0., 0., 0.]), axis=0) for i in range(FLAGS.n_out)]
+ts2 = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[1000, 500, 250], weights=None, phases=[0., 0., 0.]), axis=0) for i in range(FLAGS.n_out)]
+ts3 = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[250, 333, 200], weights=None, phases=[0., 0., 0.]), axis=0) for i in range(FLAGS.n_out)]
+ts4 = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[500, 333, 200], weights=None, phases=[0., 0., 0.]), axis=0) for i in range(FLAGS.n_out)]
+ts5 = [np.expand_dims(sum_of_sines_target(n_sines=3, periods=[500, 333, 250], weights=None, phases=[0., 0., 0.]), axis=0) for i in range(FLAGS.n_out)]
 target_sine = np.stack(ts, axis=2)
+target_sine2 = np.stack(ts2, axis=2)
+target_sine3 = np.stack(ts3, axis=2)
+target_sine4 = np.stack(ts4, axis=2)
+target_sine5 = np.stack(ts5, axis=2)
 
 
 def get_data_dict(batch_size):
     spikes = np.zeros((batch_size, FLAGS.seq_len, FLAGS.n_in))
+    target_data = np.zeros((batch_size, FLAGS.seq_len, 1))
     # frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
     for b in range(batch_size):
-        spikes[b] = frozen_noise_spikes
+        case = np.random.choice([1, 2, 3, 4, 5])
+        if case == 1:
+            spikes[b] = frozen_noise_spikes
+            target_data[b] = target_sine
+        elif case == 2:
+            spikes[b] = frozen_noise_spikes2
+            target_data[b] = target_sine2
+        elif case == 3:
+            spikes[b] = frozen_noise_spikes3
+            target_data[b] = target_sine3
+        elif case == 4:
+            spikes[b] = frozen_noise_spikes4
+            target_data[b] = target_sine4
+        elif case == 5:
+            spikes[b] = frozen_noise_spikes5
+            target_data[b] = target_sine5
 
-    target_data = np.tile(target_sine, (batch_size, 1, 1))  # batch x seq_len
     psp_out_state = np.zeros(shape=(batch_size, FLAGS.n_regular + FLAGS.n_adaptive))
 
     data_dict = {input_spikes: spikes, target_nums: target_data, batch_size_holder: batch_size,
@@ -345,11 +367,12 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     data = data[batch]
     presentation_steps = np.arange(data.shape[0])
     # ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-    raster_plot(ax, data[:, ::5], linewidth=0.4, color='black')
+    raster_plot(ax, data, linewidth=0.4, color='black')
     ax.set_xlim([0, len(data)])
     ax.set_ylabel('Input')
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     ax.set_xticklabels([])
+    ax.set_yticks([0, 20, 40, 60, 80, 100])
 
     # PLOT OUTPUT AND TARGET
     ax = ax_list[1]
