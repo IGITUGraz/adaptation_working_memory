@@ -1,4 +1,9 @@
-from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik
+"""
+    Store-recall task solved with LSNN model
+    Results in 560 produced with:
+    python3 bin/tutorial_storerecall_with_LSNN.py --n_regular=10 --n_adaptive=10 --seq_len=20 --seq_delay=10 --tau_a=2000 --n_in=40
+"""
+
 # import matplotlib
 # matplotlib.use('Agg')
 
@@ -8,13 +13,14 @@ import socket
 from time import time
 
 import matplotlib.pyplot as plt
-from matplotlib import collections as mc, patches
 import numpy as np
 import numpy.random as rd
 import tensorflow as tf
+from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
-from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
-from tutorial_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch
+
+from tutorial_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch,\
+    update_plot
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
@@ -28,6 +34,8 @@ start_time = datetime.datetime.now()
 
 ##
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
+tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_A, ...]')
+tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
 tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
@@ -75,6 +83,39 @@ tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
 
+
+def custom_seqence():
+    s = rd.choice([0, 1], size=FLAGS.seq_len)
+    s[0] = FLAGS.n_charac  # store
+    s[7] = FLAGS.n_charac + 1  # recall
+    s[12] = 1 if s[1] == 0 else 0
+    s[11] = FLAGS.n_charac  # store
+    s[17] = FLAGS.n_charac + 1  # recall
+    return s
+
+custom_plot = None
+if FLAGS.reproduce == '560_A':
+    print("Using the hyperparameters as in 560 paper: many neurons")
+    FLAGS.n_regular = 10
+    FLAGS.n_adaptive = 10
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+
+    custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+
+if FLAGS.reproduce == '560_B':
+    print("Using the hyperparameters as in 560 paper: two neurons")
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 2
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+
+    custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
 
@@ -98,7 +139,6 @@ regularization_f0_max = FLAGS.reg_max_rate / 1000
 
 # Network parameters
 tau_v = FLAGS.tau_out
-thr = FLAGS.thr
 
 decay = np.exp(-dt / FLAGS.tau_out)  # output layer psp decay, chose value between 15 and 30ms as for tau_v
 # Symbol number
@@ -129,7 +169,7 @@ else:
 # Generate the cell
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=thr,
+            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=FLAGS.thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
             dampening_factor=FLAGS.dampening_factor,
@@ -263,128 +303,40 @@ with tf.name_scope('OptimizationScheme'):
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placement))
 sess.run(tf.global_variables_initializer())
 
+if FLAGS.reproduce == '560_B':
+    # set_w_in = tf.assign(cell.w_in_var, np.array([[1, 0]]))
+    # sess.run(set_w_in)
+    # print("w_in", sess.run(cell.w_in_var))
+
+    w_rec = np.array([[0, -1], [-1, 0]])
+    set_w_rec = tf.assign(cell.w_rec_var, w_rec)
+    sess.run(set_w_rec)
+    print("w_rec", sess.run(cell.w_rec_var))
+
+    # w_out_v = np.array([[1, 1], [1, 1]])
+    # set_w_out = tf.assign(w_out, w_out_v)
+    # sess.run(set_w_out)
+
+if len(FLAGS.checkpoint) > 0:
+    saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
+    saver.restore(sess, FLAGS.checkpoint)
+    print("Model restored from ", FLAGS.checkpoint)
+else:
+    saver = tf.train.Saver()
+
+
 last_final_state_state_training_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32))]
 last_final_state_state_validation_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_val, dtype=tf.float32))]
 last_final_state_state_testing_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_test, dtype=tf.float32))]
 
-# Open an interactive matplotlib window to plot in real time
-if FLAGS.do_plot and FLAGS.interactive_plot:
-    plt.ion()
 if FLAGS.do_plot:
-    fig, ax_list = plt.subplots(4, figsize=(5.9, 6))
-
+    # Open an interactive matplotlib window to plot in real time
+    if FLAGS.interactive_plot:
+        plt.ion()
+    fig, ax_list = plt.subplots(nrows=5, figsize=(6, 7.5), gridspec_kw={'wspace': 0, 'hspace': 0.2})
     # re-name the window with the name of the cluster to track relate to the terminal window
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
 
-
-def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_synapses=FLAGS.n_adaptive):
-    """
-    This function iterates the matplotlib figure on every call.
-    It plots the data for a fixed sequence that should be representative of the expected computation
-    :return:
-    """
-    # Clear the axis to print new plots
-    for k in range(ax_list.shape[0]):
-        ax = ax_list[k]
-        ax.clear()
-        strip_right_top_axis(ax)
-
-    # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
-    for k_data, data, d_name in zip(range(2),
-                                    [plot_result_values['input_spikes'], plot_result_values['z']],
-                                    ['Input', 'Hidden']):
-
-        ax = ax_list[k_data]
-        ax.grid(color='black', alpha=0.15, linewidth=0.4)
-
-        if np.size(data) > 0:
-            data = data[batch]
-            n_max = min(data.shape[1], n_max_neuron_per_raster)
-            cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
-            data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
-            raster_plot(ax, data, linewidth=0.3)
-            ax.set_ylabel(d_name)
-            ax.set_xticklabels([])
-
-            if d_name == 'Input':
-                ax.set_yticklabels([])
-                n_channel = data.shape[1] // n_input_symbols
-                ax.add_patch(  # Value 0 row
-                    patches.Rectangle((0, 0), data.shape[0], n_channel, facecolor="red", alpha=0.15))
-                ax.add_patch(  # Value 1 row
-                    patches.Rectangle((0, n_channel), data.shape[0], n_channel, facecolor="blue", alpha=0.15))
-                ax.add_patch(  # Store row
-                    patches.Rectangle((0, 2 * n_channel), data.shape[0], n_channel, facecolor="yellow", alpha=0.15))
-                ax.add_patch(  # Recall row
-                    patches.Rectangle((0, 3 * n_channel), data.shape[0], n_channel, facecolor="green", alpha=0.15))
-
-                top_margin = 0.08
-                left_margin = -0.6
-                ax.text(left_margin, 1. - top_margin, 'Recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.75 - top_margin, 'Store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.5 - top_margin, 'Value 1', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.25 - top_margin, 'Value 0', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-
-    # plot targets
-    ax = ax_list[2]
-    mask = plot_result_values['recall_charac_mask'][batch]
-    data = plot_result_values['target_nums'][batch]
-    data[np.invert(mask)] = -1
-    lines = []
-    ind_nt = np.argwhere(data != -1)
-    for idx in ind_nt.tolist():
-        i = idx[0]
-        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='Target')
-    ax.add_collection(lc_t)  # plot target segments
-
-    # plot output per tau_char
-    data = plot_result_values['out_plot_char_step'][batch]
-    data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
-    data[np.invert(mask)] = -1
-    lines = []
-    ind_nt = np.argwhere(data != -1)
-    for idx in ind_nt.tolist():
-        i = idx[0]
-        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='Output')
-    ax.add_collection(lc_o)  # plot target segments
-
-    # plot softmax of psp-s per dt for more intuitive monitoring
-    # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch, :, 1]
-    presentation_steps = np.arange(output2.shape[0])
-    ax.set_yticks([0, 0.5, 1])
-    ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('Output')
-    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='softmax', alpha=0.7)
-    ax.axis([0, presentation_steps[-1] + 1, -0.3, 1.1])
-    ax.legend(handles=[lc_t, lc_o, line_output2], loc='lower center', fontsize=7,
-              bbox_to_anchor=(0.5, -0.05), ncol=3)
-    ax.set_xticklabels([])
-
-    # debug plot for psp-s or biases
-    plot_param = 'b_con'  # or 'psp'
-    ax.set_xticklabels([])
-    ax = ax_list[-1]
-    ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('PSPs' if plot_param == 'psp' else 'Threshold')
-    sub_data = plot_result_values[plot_param][batch]
-    if plot_param == 'b_con':
-        sub_data = sub_data + thr
-    vars = np.var(sub_data, axis=0)
-    # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-    cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
-    presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
-                 np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
-
-    ax.set_xlabel('Time in ms')
-    # To plot with interactive python one need to wait one second to the time to draw the axis
-    if FLAGS.do_plot:
-        plt.draw()
-        plt.pause(1)
 
 test_loss_list = []
 test_loss_with_reg_list = []
@@ -392,18 +344,18 @@ validation_error_list = []
 tau_delay_list = []
 training_time_list = []
 time_to_ref_list = []
-results_tensors = {'loss': loss,
-                   'loss_reg': loss_reg,
-                   'loss_recall': loss_recall,
-                   'recall_errors': recall_errors,
-                   'final_state': final_state,
-                   'av': av,
-                   'adaptive_regularization_coeff': adaptive_regularization_coeff,
-                   }
-
-results_tensors['w_in_val'] = cell.w_in_val
-results_tensors['w_rec_val'] = cell.w_rec_val
-results_tensors['w_out'] = w_out
+results_tensors = {
+    'loss': loss,
+    'loss_reg': loss_reg,
+    'loss_recall': loss_recall,
+    'recall_errors': recall_errors,
+    'final_state': final_state,
+    'av': av,
+    'adaptive_regularization_coeff': adaptive_regularization_coeff,
+    'w_in_val': cell.w_in_val,
+    'w_rec_val': cell.w_rec_val,
+    'w_out': w_out,
+}
 
 w_in_last = sess.run(cell.w_in_val)
 w_rec_last = sess.run(cell.w_rec_val)
@@ -528,7 +480,7 @@ for k_iter in range(FLAGS.n_iter):
             w_out_last = results_values['w_out']
 
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            update_plot(plot_results_values)
+            update_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(result_folder,
                                     'tmp/figure' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
@@ -559,8 +511,7 @@ if FLAGS.save_data:
         os.makedirs(full_path)
 
     # Save the tensorflow graph
-    saver = tf.train.Saver()
-    saver.save(sess, os.path.join(full_path, 'session'))
+    saver.save(sess, os.path.join(full_path, 'model'))
     saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
 
     # Save parameters and training log
@@ -583,8 +534,15 @@ if FLAGS.save_data:
         'flags': flag_dict,
     }
 
-    save_file(flag_dict, full_path, 'flag', file_type='json')
+    save_file(flag_dict, full_path, 'flags', file_type='json')
     save_file(results, full_path, 'training_results', file_type='json')
+
+    if custom_plot is not None:
+        test_dict = get_data_dict(FLAGS.batch_test, override_input=custom_plot)
+        feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
+            cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
+        plot_custom_results_values = sess.run(plot_result_tensors, feed_dict=test_dict)
+        save_file(plot_custom_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
 
     # Save sample trajectory (input, output, etc. for plotting)
     test_errors = []
@@ -598,6 +556,10 @@ if FLAGS.save_data:
             feed_dict=test_dict)
         # last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
+
+    if FLAGS.do_plot and FLAGS.monitor_plot:
+        update_plot(plt, ax_list, FLAGS, plot_results_values)
+        fig.savefig(os.path.join(full_path, 'figure_test' + start_time.strftime("%H%M") + '.pdf'), format='pdf')
 
     print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {})'''
           .format(np.mean(test_errors), np.std(test_errors), FLAGS.batch_test))

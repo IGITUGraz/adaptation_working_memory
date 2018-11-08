@@ -1,6 +1,8 @@
 import numpy as np
 import numpy.random as rd
 import tensorflow as tf
+from matplotlib import collections as mc, patches
+from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
 
 
 # Variations of sequence with specific delay for plotting
@@ -197,7 +199,7 @@ def generate_mikolov_data(batch_size, length, n_character, with_prob, prob_bit_t
                 channels[0][b,i] = channels[0][b,i+1]
                 channels[1][b,i] = channels[1][b,i+1]
                 # sometimes inverse the next input
-                if rd.uniform() < 0.5 and override_input is None:
+                if rd.uniform() < 0.5:
                     channels[0][b, i+1] = 1 - channels[0][b, i + 1]
                     channels[1][b, i+1] = 1 - channels[1][b, i + 1]
     return channels, target_nums, memory_nums, input_nums
@@ -229,3 +231,149 @@ def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac
     is_recall = np.concatenate([is_recall_table[input_nums][:, k] for k in range(sentence_length)], axis=1)
 
     return spikes, is_recall, target_sequence, None, input_nums, target_nums
+
+
+def hide_bottom_axis(ax):
+    ax.spines['bottom'].set_visible(False)
+    ax.set_xticklabels([])
+    ax.get_xaxis().set_visible(False)
+
+
+def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_per_raster=100):
+    """
+    This function iterates the matplotlib figure on every call.
+    It plots the data for a fixed sequence that should be representative of the expected computation
+    :return:
+    """
+    ylabel_x = -0.11
+    ylabel_y = 0.5
+    fs = 10
+    plt.rcParams.update({'font.size': fs})
+
+    # Clear the axis to print new plots
+    for k in range(ax_list.shape[0]):
+        ax = ax_list[k]
+        ax.clear()
+        strip_right_top_axis(ax)
+
+    # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
+    for k_data, data, d_name in zip(range(3),
+                                    [plot_result_values['input_spikes'], plot_result_values['z'],
+                                     plot_result_values['z']], ['input X', 'R', 'A']):
+
+        ax = ax_list[k_data]
+        # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+        hide_bottom_axis(ax)
+
+        if np.size(data) > 0:
+            data = data[batch]
+            if d_name is 'R':
+                data = data[:, :FLAGS.n_regular]
+            elif d_name is 'A':
+                data = data[:, FLAGS.n_regular:]
+            n_max = min(data.shape[1], n_max_neuron_per_raster)
+            cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
+            data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
+            raster_plot(ax, data, linewidth=0.3)
+            ax.set_ylabel(d_name, fontsize=fs)
+            ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+            ax.set_yticklabels(['1', str(data.shape[-1])])
+
+            if k_data == 0:
+                ax.set_yticklabels([])
+                n_channel = data.shape[1] // (FLAGS.n_charac + 2)  # divide #in_neurons with #in_channels
+                ax.add_patch(  # Value 0 row
+                    patches.Rectangle((0, 0), data.shape[0], n_channel, facecolor="red", alpha=0.15))
+                ax.add_patch(  # Value 1 row
+                    patches.Rectangle((0, n_channel), data.shape[0], n_channel, facecolor="blue", alpha=0.15))
+                ax.add_patch(  # Store row
+                    patches.Rectangle((0, 2 * n_channel), data.shape[0], n_channel, facecolor="yellow", alpha=0.15))
+                ax.add_patch(  # Recall row
+                    patches.Rectangle((0, 3 * n_channel), data.shape[0], n_channel, facecolor="green", alpha=0.15))
+
+                top_margin = 0.08
+                left_margin = -0.085
+                ax.text(left_margin, 1. - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+                ax.text(left_margin, 0.75 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+                ax.text(left_margin, 0.5 - top_margin, 'value 1', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+                ax.text(left_margin, 0.25 - top_margin, 'value 0', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+
+    ax = ax_list[-2]
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    ax.set_ylabel('thresholds of A', fontsize=fs)
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    sub_data = plot_result_values['b_con'][batch]
+    sub_data = sub_data + FLAGS.thr  # because b_con is only the adaptive term of LSNN threshold
+    vars = np.var(sub_data, axis=0)
+    cell_with_max_var = np.argsort(vars)[::-1]
+    presentation_steps = np.arange(sub_data.shape[0])
+    ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
+    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
+             np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
+    hide_bottom_axis(ax)
+
+    # plot targets
+    ax = ax_list[-1]
+    mask = plot_result_values['recall_charac_mask'][batch]
+    data = plot_result_values['target_nums'][batch]
+    data[np.invert(mask)] = -1
+    lines = []
+    ind_nt = np.argwhere(data != -1)
+    for idx in ind_nt.tolist():
+        i = idx[0]
+        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
+    lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='target')
+    ax.add_collection(lc_t)  # plot target segments
+
+    # plot output per tau_char
+    data = plot_result_values['out_plot_char_step'][batch]
+    data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
+    data[np.invert(mask)] = -1
+    lines = []
+    ind_nt = np.argwhere(data != -1)
+    for idx in ind_nt.tolist():
+        i = idx[0]
+        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
+    lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='output')
+    ax.add_collection(lc_o)  # plot target segments
+
+    # plot softmax of psp-s per dt for more intuitive monitoring
+    # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
+    output2 = plot_result_values['out_plot'][batch, :, 1]
+    presentation_steps = np.arange(output2.shape[0])
+    ax.set_yticks([0, 0.5, 1])
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    ax.set_ylabel('output Y', fontsize=fs)
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='softmax', alpha=0.7)
+    ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
+    ax.legend(handles=[lc_t, lc_o, line_output2], loc='lower center', fontsize=7,
+              bbox_to_anchor=(0.5, -0.1), ncol=3)
+
+    ax.set_xlabel('time in ms', fontsize=fs)
+    # To plot with interactive python one need to wait one second to the time to draw the axis
+    if FLAGS.do_plot:
+        plt.draw()
+        plt.pause(1)
+
+
+def offline_plot(data_path, custom_plot=True):
+    import matplotlib.pyplot as plt
+    import datetime
+    import pickle
+    import json
+    import os
+    plt.ion()
+    fig, ax_list = plt.subplots(nrows=5, figsize=(6, 7.5), gridspec_kw={'wspace': 0, 'hspace': 0.2})
+
+    flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
+    from types import SimpleNamespace
+    flags = SimpleNamespace(**flags_dict)
+
+    plot_data = 'plot_custom_trajectory_data.pickle' if custom_plot else 'plot_trajectory_data.pickle'
+    plot_result_values = pickle.load(open(os.path.join(data_path, plot_data), 'rb'))
+    for b in range(flags.batch_test):
+        update_plot(plt, ax_list, flags, plot_result_values, batch=b, n_max_neuron_per_raster=100)
+        start_time = datetime.datetime.now()
+        fig.savefig(os.path.join(data_path, 'figure_test' + str(b) + '_' + start_time.strftime("%H%M") + '.pdf'),
+                    format='pdf')
