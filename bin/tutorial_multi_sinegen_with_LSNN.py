@@ -34,7 +34,7 @@ tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set'
 tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 1, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_out', 1, 'number of output neurons (number of target curves)')
-tf.app.flags.DEFINE_integer('n_in', 80, 'number of input units.')
+tf.app.flags.DEFINE_integer('n_in', 100, 'number of input units.')
 tf.app.flags.DEFINE_integer('n_regular', 100, 'number of recurrent units.')
 tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
@@ -173,19 +173,20 @@ frozen_noise_rates = np.zeros((FLAGS.seq_len, FLAGS.n_in))
 frozen_noise_rates[:, :] = FLAGS.f0 / 1000
 frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
 
-frozen_noise_spikes = np.zeros_like(frozen_noise_spikes)  # no input
+frozen_noise_spikes1 = np.zeros_like(frozen_noise_spikes)  # no input
 frozen_noise_spikes2 = np.zeros_like(frozen_noise_spikes)  # no input
+
+clk_n_in = 80
 n_of_steps = 4
-input_spike_every = 10
+input_spike_every = 6
 assert FLAGS.seq_len % n_of_steps == 0
 step_len = int(FLAGS.seq_len / n_of_steps)
-step_group = int(FLAGS.n_in / (n_of_steps * 2))
-group2_begin = int(FLAGS.n_in / 2)
+step_group = int(clk_n_in / n_of_steps)
 for i in range(n_of_steps):  # clock signal like
-    frozen_noise_spikes[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
-    frozen_noise_spikes2[i*step_len:(i+1)*step_len:input_spike_every, group2_begin+i*step_group:group2_begin+(i+1)*step_group] = 1.
-# frozen_noise_spikes[0:50, :] = 1.
-# frozen_noise_spikes[500:550, :] = 1.
+    frozen_noise_spikes1[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+    frozen_noise_spikes2[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+frozen_noise_spikes1[::input_spike_every, 80:90] = 1.
+frozen_noise_spikes2[::input_spike_every, 90:100] = 1.
 
 
 def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1., 1., 1.], phases=[0., 0., 0., 0.]):
@@ -214,7 +215,7 @@ def get_data_dict(batch_size):
     # frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
     for b in range(batch_size):
         if rd.random() < 0.5:
-            spikes[b] = frozen_noise_spikes
+            spikes[b] = frozen_noise_spikes1
             target_data[b] = target_sine
         else:
             spikes[b] = frozen_noise_spikes2
