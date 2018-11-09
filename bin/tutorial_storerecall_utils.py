@@ -257,10 +257,12 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
         strip_right_top_axis(ax)
 
     # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
-    for k_data, data, d_name in zip(range(3),
-                                    [plot_result_values['input_spikes'], plot_result_values['z'],
-                                     plot_result_values['z']], ['input X', 'R', 'A']):
+    z = plot_result_values['z']
+    raster_data = \
+        zip(range(3), [plot_result_values['input_spikes'], z, z], ['input X', 'R', 'A']) if FLAGS.n_regular > 0 else \
+        zip(range(2), [plot_result_values['input_spikes'], z], ['input X', 'A'])
 
+    for k_data, data, d_name in raster_data:
         ax = ax_list[k_data]
         # ax.grid(color='black', alpha=0.15, linewidth=0.4)
         hide_bottom_axis(ax)
@@ -274,7 +276,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
             n_max = min(data.shape[1], n_max_neuron_per_raster)
             cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
             data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
-            raster_plot(ax, data, linewidth=0.3)
+            raster_plot(ax, data, linewidth=0.15)
             ax.set_ylabel(d_name, fontsize=fs)
             ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
             ax.set_yticklabels(['1', str(data.shape[-1])])
@@ -363,8 +365,6 @@ def offline_plot(data_path, custom_plot=True):
     import pickle
     import json
     import os
-    plt.ion()
-    fig, ax_list = plt.subplots(nrows=5, figsize=(6, 7.5), gridspec_kw={'wspace': 0, 'hspace': 0.2})
 
     flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
     from types import SimpleNamespace
@@ -372,6 +372,11 @@ def offline_plot(data_path, custom_plot=True):
 
     plot_data = 'plot_custom_trajectory_data.pickle' if custom_plot else 'plot_trajectory_data.pickle'
     plot_result_values = pickle.load(open(os.path.join(data_path, plot_data), 'rb'))
+
+    plt.ion()
+    nrows = 5 if flags.n_regular > 0 else 4
+    height = 7.5 if flags.n_regular > 0 else 6
+    fig, ax_list = plt.subplots(nrows=nrows, figsize=(6, height), gridspec_kw={'wspace': 0, 'hspace': 0.2})
     for b in range(flags.batch_test):
         update_plot(plt, ax_list, flags, plot_result_values, batch=b, n_max_neuron_per_raster=100)
         start_time = datetime.datetime.now()

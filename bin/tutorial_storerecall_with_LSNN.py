@@ -1,7 +1,10 @@
 """
     Store-recall task solved with LSNN model
-    Results in 560 produced with:
-    python3 bin/tutorial_storerecall_with_LSNN.py --n_regular=10 --n_adaptive=10 --seq_len=20 --seq_delay=10 --tau_a=2000 --n_in=40
+    Results in 560 produced with following settings:
+    # 20 neurons setup
+    python3 bin/tutorial_storerecall_with_LSNN.py --reproduce=560_A
+    # 2 neurons setup
+    python3 bin/tutorial_storerecall_with_LSNN.py --reproduce=560_B
 """
 
 # import matplotlib
@@ -89,8 +92,8 @@ def custom_seqence():
     s[0] = FLAGS.n_charac  # store
     s[7] = FLAGS.n_charac + 1  # recall
     s[12] = 1 if s[1] == 0 else 0
-    s[11] = FLAGS.n_charac  # store
-    s[17] = FLAGS.n_charac + 1  # recall
+    s[13] = FLAGS.n_charac  # store
+    s[19] = FLAGS.n_charac + 1  # recall
     return s
 
 custom_plot = None
