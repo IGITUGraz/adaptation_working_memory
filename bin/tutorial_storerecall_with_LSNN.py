@@ -302,7 +302,6 @@ with tf.name_scope('OptimizationScheme'):
     else:
         train_step = opt.minimize(loss=loss, global_step=global_step)
 
-# Real-time plotting
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placement))
 sess.run(tf.global_variables_initializer())
 

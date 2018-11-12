@@ -2,7 +2,7 @@ import numpy as np
 import numpy.random as rd
 import tensorflow as tf
 from matplotlib import collections as mc, patches
-from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
+from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot, hide_bottom_axis
 
 
 # Variations of sequence with specific delay for plotting
@@ -233,12 +233,6 @@ def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac
     return spikes, is_recall, target_sequence, None, input_nums, target_nums
 
 
-def hide_bottom_axis(ax):
-    ax.spines['bottom'].set_visible(False)
-    ax.set_xticklabels([])
-    ax.get_xaxis().set_visible(False)
-
-
 def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_per_raster=100):
     """
     This function iterates the matplotlib figure on every call.
@@ -309,7 +303,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     vars = np.var(sub_data, axis=0)
     cell_with_max_var = np.argsort(vars)[::-1]
     presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
+    ax.plot(sub_data[:, cell_with_max_var], color='r', alpha=0.4, linewidth=1)
     ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
              np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
     hide_bottom_axis(ax)
@@ -336,7 +330,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     for idx in ind_nt.tolist():
         i = idx[0]
         lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='output')
+    lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='avg. output')
     ax.add_collection(lc_o)  # plot target segments
 
     # plot softmax of psp-s per dt for more intuitive monitoring
@@ -347,7 +341,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     ax.set_ylabel('output Y', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='softmax', alpha=0.7)
+    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='output', alpha=0.7)
     ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
     ax.legend(handles=[lc_t, lc_o, line_output2], loc='lower center', fontsize=7,
               bbox_to_anchor=(0.5, -0.1), ncol=3)

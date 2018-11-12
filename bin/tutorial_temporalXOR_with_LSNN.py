@@ -1,4 +1,4 @@
-from bin.tutorial_temporalXOR_utils import generate_xor_input
+from bin.tutorial_temporalXOR_utils import generate_xor_input, update_plot
 from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik
 # import matplotlib
 # matplotlib.use('Agg')
@@ -30,6 +30,7 @@ start_time = datetime.datetime.now()
 
 ##
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
+tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
 tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
@@ -167,23 +168,10 @@ target_sequence = tf.placeholder(dtype=tf.int64, shape=(None),
                                  name='TargetSequence')  # The target characters with time expansion
 batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that contains the batch size
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
-# recall_charac_mask = tf.equal(input_nums, recall_symbol, name='RecallCharacMask')
 recall_charac_mask = recall_mask
 
 
 def get_data_dict(batch_size, pulse_delay=FLAGS.xor_delay):
-    # p_sr = 1/(1 + FLAGS.seq_delay)
-    # spk_data, is_recall_data, target_seq_data, memory_seq_data, in_data, target_data = generate_storerecall_data(
-    #     batch_size=batch_size,
-    #     f0=input_f0,
-    #     sentence_length=seq_len,
-    #     n_character=FLAGS.n_charac,
-    #     n_charac_duration=FLAGS.tau_char,
-    #     n_neuron=FLAGS.n_in,
-    #     prob_signals=p_sr,
-    #     with_prob=True,
-    #     override_input=override_input,
-    # )
     input_data, target_data, target_mask, targets = generate_xor_input(batch_size=batch_size,
                                                                        length=FLAGS.seq_len * FLAGS.tau_char,
                                                                        expected_delay=pulse_delay)
@@ -274,9 +262,15 @@ with tf.name_scope('OptimizationScheme'):
     else:
         train_step = opt.minimize(loss=loss, global_step=global_step)
 
-# Real-time plotting
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placement))
 sess.run(tf.global_variables_initializer())
+
+if len(FLAGS.checkpoint) > 0:
+    saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
+    saver.restore(sess, FLAGS.checkpoint)
+    print("Model restored from ", FLAGS.checkpoint)
+else:
+    saver = tf.train.Saver()
 
 last_final_state_state_training_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32))]
 last_final_state_state_validation_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_val, dtype=tf.float32))]
@@ -292,105 +286,6 @@ if FLAGS.do_plot:
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
 
 
-def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_synapses=FLAGS.n_adaptive):
-    """
-    This function iterates the matplotlib figure on every call.
-    It plots the data for a fixed sequence that should be representative of the expected computation
-    :return:
-    """
-    ylabel_x = -0.08
-    ylabel_y = 0.5
-    # Clear the axis to print new plots
-    for k in range(ax_list.shape[0]):
-        ax = ax_list[k]
-        ax.clear()
-        strip_right_top_axis(ax)
-
-    # PLOT Input signals
-    ax = ax_list[0]
-    data = plot_result_values['input_spikes']
-    data = data[batch]
-    presentation_steps = np.arange(data.shape[0])
-    ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-    ax.axis([0, len(data), -1.1, 1.1])
-    ax.set_ylabel('Input')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.set_xticklabels([])
-
-    # PLOT Go-cue
-    ax = ax_list[1]
-    data = plot_result_values['input_spikes']
-    data = data[batch]
-    presentation_steps = np.arange(data.shape[0])
-    ax.plot(presentation_steps, data[:, 1], color='red', label='Go-cue', alpha=0.7)
-    ax.axis([0, len(data), -1.1, 1.1])
-    ax.set_ylabel('Go-cue')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.set_xticklabels([])
-
-    # PLOT OUTPUT AND TARGET
-    ax = ax_list[2]
-    mask = plot_result_values['recall_charac_mask'][batch]
-    raw_out = plot_result_values['out_plot'][batch]
-    presentation_steps = np.arange(raw_out.shape[0])
-    # processed target
-    data = plot_result_values['target_nums'][batch].astype(float)
-    data[data == 2] = 0.5
-    line_target, = ax.plot(presentation_steps[:], data[:], color='black', label='Target', alpha=0.7)
-    # processed output
-    output0 = 1. - raw_out[:, 0]
-    output1 = raw_out[:, 1]
-    combined_output = (output0 + output1)/2
-    presentation_steps = np.arange(combined_output.shape[0])
-    line_output2, = ax.plot(presentation_steps, combined_output, color='green', label='Output', alpha=0.7)
-    line_handles = [line_output2, line_target]
-    # raw output
-    # line_output_raw0, = ax.plot(presentation_steps, raw_out[:, 0], color='red', label='0', alpha=0.2)
-    # line_output_raw1, = ax.plot(presentation_steps, raw_out[:, 1], color='blue', label='1', alpha=0.2)
-    # line_output_raw2, = ax.plot(presentation_steps, raw_out[:, 2], color='yellow', label='2', alpha=0.4)
-    # line_handles.append(line_output_raw0)
-    # line_handles.append(line_output_raw1)
-    # line_handles.append(line_output_raw2)
-
-    ax.set_yticks([0, 0.5, 1])
-    ax.set_ylabel('Output')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.axis([0, presentation_steps[-1] + 1, -0.3, 1.1])
-    ax.legend(handles=line_handles, loc='lower left', fontsize=7, ncol=len(line_handles))
-    ax.set_xticklabels([])
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-
-    # PLOT SPIKES
-    ax = ax_list[3]
-    data = plot_result_values['z']
-    data = data[batch]
-    raster_plot(ax, data, linewidth=0.3)
-    ax.set_ylabel('LSNN')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.set_xticklabels([])
-
-    # debug plot for psp-s or biases
-    plot_param = 'b_con'  # or 'psp'
-    ax.set_xticklabels([])
-    ax = ax_list[-1]
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('Threshold')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    sub_data = plot_result_values['b_con'][batch]
-    sub_data = sub_data + thr
-    vars = np.var(sub_data, axis=0)
-    # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-    cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
-    presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
-                 np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
-
-    ax.set_xlabel('Time in ms')
-    # To plot with interactive python one need to wait one second to the time to draw the axis
-    if FLAGS.do_plot:
-        plt.draw()
-        plt.pause(1)
 
 test_loss_list = []
 test_loss_with_reg_list = []
@@ -534,7 +429,7 @@ for k_iter in range(FLAGS.n_iter):
             w_out_last = results_values['w_out']
 
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            update_plot(plot_results_values)
+            update_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(result_folder,
                                     'tmp/figure' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
@@ -567,8 +462,7 @@ if FLAGS.save_data:
         os.makedirs(full_path)
 
     # Save the tensorflow graph
-    saver = tf.train.Saver()
-    saver.save(sess, os.path.join(full_path, 'session'))
+    saver.save(sess, os.path.join(full_path, 'model'))
     saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
 
     results = {
@@ -584,7 +478,7 @@ if FLAGS.save_data:
         'flags': flag_dict,
     }
 
-    save_file(flag_dict, full_path, 'flag', file_type='json')
+    save_file(flag_dict, full_path, 'flags', file_type='json')
     save_file(results, full_path, 'training_results', file_type='json')
 
     # Save sample trajectory (input, output, etc. for plotting)
@@ -599,7 +493,7 @@ if FLAGS.save_data:
         # last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            update_plot(plot_results_values)
+            update_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(full_path,
                                     'figure_test' + start_time.strftime("%H%M") + '_' +
                                     str(i) + '.pdf')
