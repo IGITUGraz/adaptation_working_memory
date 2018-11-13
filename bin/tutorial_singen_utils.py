@@ -42,7 +42,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, cont=-1):
     ax = ax_list[1]
     data = plot_result_values['z']
     data = data[batch] if cont == -1 else data[cont, batch]
-    data = data[:, :FLAGS.n_regular]
+    data = data[:, :FLAGS.n_regular]  # R neurons
     raster_plot(ax, data, linewidth=.3)
     ax.set_ylabel('R', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
@@ -50,7 +50,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, cont=-1):
     ax = ax_list[2]
     data = plot_result_values['z']
     data = data[batch] if cont == -1 else data[cont, batch]
-    data = data[:, FLAGS.n_regular:FLAGS.n_regular+FLAGS.n_adaptive]
+    data = data[:, FLAGS.n_regular:FLAGS.n_regular+FLAGS.n_adaptive]  # A neurons
     raster_plot(ax, data, linewidth=1.)
     ax.set_ylabel('A', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)

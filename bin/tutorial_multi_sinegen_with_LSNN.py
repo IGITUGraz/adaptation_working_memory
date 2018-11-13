@@ -76,6 +76,7 @@ tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
 tf.app.flags.DEFINE_bool('sum_sines', True, '')
+tf.app.flags.DEFINE_bool('continuous_plot', False, 'Generate data for plotting test of multiple sequences serially')
 
 # Run asserts to check seq_delay and seq_len relation is ok
 assert FLAGS.seq_len > FLAGS.seq_delay * 2 + 200
@@ -129,11 +130,11 @@ else:
     rec_neuron_sign = None
 
 # Generate the cell
-beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 if FLAGS.tau_a_spread:
     tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
 else:
     tau_a_spread = FLAGS.tau_a
+beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
             n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
@@ -157,6 +158,7 @@ except:
     print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
     flag_dict = FLAGS.__flags
 print(json.dumps(flag_dict, indent=4))
+flag_dict['tauas'] = tau_a_spread
 
 # Generate input
 input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in),
@@ -548,21 +550,22 @@ if FLAGS.save_data:
           .format(np.mean(test_errors), np.std(test_errors), FLAGS.batch_test, np.mean(test_depasq_err)))
     save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
 
-    def stack_to_new_axis(key):
-        cont_data = [cp[key] for cp in continuous_plot]
-        cont_data = np.stack(cont_data, axis=0)
-        print(key, cont_data.shape)
-        return cont_data
-    cont_input_spikes = stack_to_new_axis('input_spikes')
-    cont_z = stack_to_new_axis('z')
-    cont_b_con = stack_to_new_axis('b_con')
-    cont_target_nums = stack_to_new_axis('target_nums')
-    cont_out_plot = stack_to_new_axis('out_plot')
-    cont_plot_result_values = {
-        'input_spikes': cont_input_spikes, 'z': cont_z, 'b_con': cont_b_con, 'target_nums': cont_target_nums,
-        'out_plot': cont_out_plot,
-    }
-    save_file(cont_plot_result_values, full_path, 'plot_cont_trajectory_data', 'pickle')
+    if FLAGS.continuous_plot:
+        def stack_to_new_axis(key):
+            cont_data = [cp[key] for cp in continuous_plot]
+            cont_data = np.stack(cont_data, axis=0)
+            print(key, cont_data.shape)
+            return cont_data
+        cont_input_spikes = stack_to_new_axis('input_spikes')
+        cont_z = stack_to_new_axis('z')
+        cont_b_con = stack_to_new_axis('b_con')
+        cont_target_nums = stack_to_new_axis('target_nums')
+        cont_out_plot = stack_to_new_axis('out_plot')
+        cont_plot_result_values = {
+            'input_spikes': cont_input_spikes, 'z': cont_z, 'b_con': cont_b_con, 'target_nums': cont_target_nums,
+            'out_plot': cont_out_plot,
+        }
+        save_file(cont_plot_result_values, full_path, 'plot_cont_trajectory_data', 'pickle')
 
     # Save test results
     results = {

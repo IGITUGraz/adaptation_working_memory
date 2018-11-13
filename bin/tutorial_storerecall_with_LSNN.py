@@ -170,9 +170,13 @@ else:
     rec_neuron_sign = None
 
 # Generate the cell
+if FLAGS.tau_a_spread:
+    tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
+else:
+    tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=FLAGS.thr,
+            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
             dampening_factor=FLAGS.dampening_factor,
@@ -522,7 +526,7 @@ if FLAGS.save_data:
     except:
         print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
         flag_dict = FLAGS.__flags
-
+    flag_dict['tauas'] = tau_a_spread
     results = {
         'error': validation_error_list[-1],
         'loss': test_loss_list[-1],
