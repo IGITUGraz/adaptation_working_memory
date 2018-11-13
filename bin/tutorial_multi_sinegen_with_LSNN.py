@@ -175,20 +175,20 @@ frozen_noise_rates = np.zeros((FLAGS.seq_len, FLAGS.n_in))
 frozen_noise_rates[:, :] = FLAGS.f0 / 1000
 frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
 
-frozen_noise_spikes1 = np.zeros_like(frozen_noise_spikes)  # no input
-frozen_noise_spikes2 = np.zeros_like(frozen_noise_spikes)  # no input
-
-clk_n_in = 80
-n_of_steps = 4
-input_spike_every = 6
-assert FLAGS.seq_len % n_of_steps == 0
-step_len = int(FLAGS.seq_len / n_of_steps)
-step_group = int(clk_n_in / n_of_steps)
-for i in range(n_of_steps):  # clock signal like
-    frozen_noise_spikes1[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
-    frozen_noise_spikes2[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
-frozen_noise_spikes1[::input_spike_every, 80:90] = 1.
-frozen_noise_spikes2[::input_spike_every, 90:100] = 1.
+# frozen_noise_spikes1 = np.zeros_like(frozen_noise_spikes)  # no input
+# frozen_noise_spikes2 = np.zeros_like(frozen_noise_spikes)  # no input
+#
+# clk_n_in = 80
+# n_of_steps = 4
+# input_spike_every = 6
+# assert FLAGS.seq_len % n_of_steps == 0
+# step_len = int(FLAGS.seq_len / n_of_steps)
+# step_group = int(clk_n_in / n_of_steps)
+# for i in range(n_of_steps):  # clock signal like
+#     frozen_noise_spikes1[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+#     frozen_noise_spikes2[i*step_len:(i+1)*step_len:input_spike_every, i*step_group:(i+1)*step_group] = 1.
+# frozen_noise_spikes1[::input_spike_every, 80:90] = 1.
+# frozen_noise_spikes2[::input_spike_every, 90:100] = 1.
 
 
 def sum_of_sines_target(n_sines=4, periods=[1000, 500, 333, 200], weights=[1., 1., 1., 1.], phases=[0., 0., 0., 0.]):
@@ -217,10 +217,10 @@ def get_data_dict(batch_size):
     # frozen_noise_spikes = generate_poisson_noise_np(frozen_noise_rates)
     for b in range(batch_size):
         if rd.random() < 0.5:
-            spikes[b] = frozen_noise_spikes1
+            spikes[b] = frozen_noise_spikes
             target_data[b] = target_sine
         else:
-            spikes[b] = frozen_noise_spikes2
+            spikes[b] = frozen_noise_spikes
             target_data[b] = target_sine2
 
     psp_out_state = np.zeros(shape=(batch_size, FLAGS.n_regular + FLAGS.n_adaptive))
