@@ -15,7 +15,7 @@ import numpy as np
 import numpy.random as rd
 import tensorflow as tf
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
-from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
+from bin.tutorial_singen_utils import update_plot
 
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
     feed_dict_with_placeholder_container, exp_convolve, ALIF
@@ -49,7 +49,7 @@ tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 ##
-tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
+tf.app.flags.DEFINE_float('stop_crit', 0.005, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
@@ -322,93 +322,10 @@ last_psp_state = np.zeros(shape=(FLAGS.batch_val, FLAGS.n_regular + FLAGS.n_adap
 if FLAGS.do_plot and FLAGS.interactive_plot:
     plt.ion()
 if FLAGS.do_plot:
-    fig, ax_list = plt.subplots(4, figsize=(5.9, 6))
+    fig, ax_list = plt.subplots(5, figsize=(6, 7.5))
 
     # re-name the window with the name of the cluster to track relate to the terminal window
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
-
-
-def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_synapses=FLAGS.n_adaptive):
-    """
-    This function iterates the matplotlib figure on every call.
-    It plots the data for a fixed sequence that should be representative of the expected computation
-    :return:
-    """
-    ylabel_x = -0.08
-    ylabel_y = 0.5
-    # Clear the axis to print new plots
-    for k in range(ax_list.shape[0]):
-        ax = ax_list[k]
-        ax.clear()
-        strip_right_top_axis(ax)
-
-    # PLOT Input signals
-    ax = ax_list[0]
-    data = plot_result_values['input_spikes']
-    data = data[batch]
-    presentation_steps = np.arange(data.shape[0])
-    # ax.plot(presentation_steps, data[:, 0], color='blue', label='Input', alpha=0.7)
-    raster_plot(ax, data[:, ::2], linewidth=0.4, color='black')
-    ax.set_xlim([0, len(data)])
-    ax.set_ylabel('Input')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.set_xticklabels([])
-
-    # PLOT OUTPUT AND TARGET
-    ax = ax_list[1]
-    data = plot_result_values['target_nums'][batch]
-    presentation_steps = np.arange(data.shape[0])
-    for i in range(data.shape[1]):
-        line_target, = ax.plot(presentation_steps[:], data[:, i], color='blue', label='Target', alpha=0.7)
-    # data = plot_result_values['out_plot'][batch, :, 1]
-    # out_avg = data[mask]
-    # out_avg = np.ones_like(out_avg) * np.mean(out_avg)
-    # line_out, = ax.plot(presentation_steps[mask], out_avg, color='blue', label='avg.out.', alpha=0.7)
-    # plot softmax of psp-s per dt for more intuitive monitoring
-    # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch]
-    presentation_steps = np.arange(output2.shape[0])
-    ax.set_yticks([-1, 0, 1])
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('Output')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    for i in range(data.shape[1]):
-        line_output2, = ax.plot(presentation_steps, output2[:, i], color='green', label='Output', alpha=0.7)
-    ax.set_xlim([0, presentation_steps[-1] + 1])
-    ax.legend(handles=[line_output2, line_target], loc='lower left', fontsize=7, ncol=3)
-    ax.set_xticklabels([])
-
-    # PLOT SPIKES
-    ax = ax_list[2]
-    data = plot_result_values['z']
-    data = data[batch]
-    raster_plot(ax, data, linewidth=0.3)
-    ax.set_ylabel('LSNN')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.set_xticklabels([])
-
-    # debug plot for psp-s or biases
-    plot_param = 'b_con'  # or 'psp'
-    ax.set_xticklabels([])
-    ax = ax_list[-1]
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('Threshold')
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    sub_data = plot_result_values['b_con'][batch, :, FLAGS.n_regular:FLAGS.n_regular+FLAGS.n_adaptive]
-    sub_data = sub_data + thr
-    vars = np.var(sub_data, axis=0)
-    # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-    cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
-    presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
-                 np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
-
-    ax.set_xlabel('Time in ms')
-    # To plot with interactive python one need to wait one second to the time to draw the axis
-    if FLAGS.do_plot:
-        plt.draw()
-        plt.pause(1)
 
 test_loss_list = []
 test_loss_with_reg_list = []
@@ -426,23 +343,28 @@ results_tensors = {
     'final_state': final_state,
     'av': av,
     'adaptive_regularization_coeff': adaptive_regularization_coeff,
-    'depasq_err': depasq_err
+    'depasq_err': depasq_err,
+    'w_in_val': cell.w_in_val,
+    'w_rec_val': cell.w_rec_val,
+    'w_out': w_out
 }
-
-results_tensors['w_in_val'] = cell.w_in_val
-results_tensors['w_rec_val'] = cell.w_rec_val
-results_tensors['w_out'] = w_out
 
 w_in_last = sess.run(cell.w_in_val)
 w_rec_last = sess.run(cell.w_rec_val)
 w_out_last = sess.run(w_out)
 
-plot_result_tensors = {'input_spikes': input_spikes,
-                       'z': z,
-                       'z_con': z_con,
-                       'target_nums': target_nums,
-                       # 'out_avg_per_step': out_plot_char_step,
-                       }
+plot_result_tensors = {
+    'input_spikes': input_spikes,
+    'z': z,
+    'z_con': z_con,
+    'target_nums': target_nums,
+    'psp': psp,
+    'out_plot': out,
+    'Y': Y,
+    'Y_predict': Y_predict,
+    'b_con': b_con,
+}
+
 t_train = 0
 t_ref = time()
 for k_iter in range(FLAGS.n_iter):
@@ -457,14 +379,6 @@ for k_iter in range(FLAGS.n_iter):
     val_dict = get_data_dict(FLAGS.batch_val)
     feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
     val_dict[psp_out_state_holder] = last_psp_state
-
-    plot_result_tensors['psp'] = psp
-    # plot_result_tensors['out_plot_char_step'] = out_plot_char_step
-    plot_result_tensors['out_plot'] = out
-    plot_result_tensors['Y'] = Y
-    plot_result_tensors['Y_predict'] = Y_predict
-
-    plot_result_tensors['b_con'] = b_con
 
     results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
     last_final_state_state_validation_pointer[0] = results_values['final_state']
@@ -558,7 +472,7 @@ for k_iter in range(FLAGS.n_iter):
             w_out_last = results_values['w_out']
 
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            update_plot(plot_results_values)
+            update_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(result_folder,
                                     'tmp/figure' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
@@ -566,7 +480,7 @@ for k_iter in range(FLAGS.n_iter):
                 os.makedirs(os.path.join(result_folder, 'tmp'))
             fig.savefig(tmp_path, format='pdf')
 
-        if np.mean(validation_error_list[-print_every:]) < FLAGS.stop_crit:
+        if np.mean(depasq_errs[-print_every:]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
             break
 
@@ -608,24 +522,23 @@ if FLAGS.save_data:
         'depasq_errs': depasq_errs,
     }
 
-    save_file(flag_dict, full_path, 'flag', file_type='json')
+    save_file(flag_dict, full_path, 'flags', file_type='json')
     save_file(results, full_path, 'training_results', file_type='json')
 
     # Save sample trajectory (input, output, etc. for plotting)
     test_errors = []
     test_depasq_err = []
+    continuous_plot = []
     for i in range(16):
         test_dict = get_data_dict(FLAGS.batch_test)
         feed_dict_with_placeholder_container(test_dict, init_state_holder, last_final_state_state_testing_pointer[0])
-
-        results_values, plot_results_values, in_spk, spk, spk_con, target_nums_np = sess.run(
-            [results_tensors, plot_result_tensors, input_spikes, z, z_con, target_nums],
-            feed_dict=test_dict)
+        results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=test_dict)
+        continuous_plot.append(plot_results_values)
         last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
         test_depasq_err.append(results_values['depasq_err'])
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            update_plot(plot_results_values)
+            update_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(full_path,
                                     'figure_test' + start_time.strftime("%H%M") + '_' +
                                     str(i) + '.pdf')
@@ -634,6 +547,22 @@ if FLAGS.save_data:
     print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {}) DePasq Error {:.2g}'''
           .format(np.mean(test_errors), np.std(test_errors), FLAGS.batch_test, np.mean(test_depasq_err)))
     save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
+
+    def stack_to_new_axis(key):
+        cont_data = [cp[key] for cp in continuous_plot]
+        cont_data = np.stack(cont_data, axis=0)
+        print(key, cont_data.shape)
+        return cont_data
+    cont_input_spikes = stack_to_new_axis('input_spikes')
+    cont_z = stack_to_new_axis('z')
+    cont_b_con = stack_to_new_axis('b_con')
+    cont_target_nums = stack_to_new_axis('target_nums')
+    cont_out_plot = stack_to_new_axis('out_plot')
+    cont_plot_result_values = {
+        'input_spikes': cont_input_spikes, 'z': cont_z, 'b_con': cont_b_con, 'target_nums': cont_target_nums,
+        'out_plot': cont_out_plot,
+    }
+    save_file(cont_plot_result_values, full_path, 'plot_cont_trajectory_data', 'pickle')
 
     # Save test results
     results = {
