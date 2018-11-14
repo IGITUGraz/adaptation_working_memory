@@ -63,6 +63,7 @@ tf.app.flags.DEFINE_float('reg', 1e-3, 'regularization coefficient to target a s
 tf.app.flags.DEFINE_float('rewiring_temperature', 0., 'regularization coefficient')
 tf.app.flags.DEFINE_float('proportion_excitatory', 0.75, 'proportion of excitatory neurons')
 ##
+tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('verbose', True, 'Print many info during training')
 tf.app.flags.DEFINE_bool('neuron_sign', True,
@@ -79,7 +80,6 @@ if FLAGS.save_data:
     os.makedirs(storage_path, exist_ok=True)
     save_file(flag_dict, storage_path, 'flag', 'json')
     print('saving data to: ' + storage_path)
-print(json.dumps(flag_dict, indent=4))
 
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
@@ -104,12 +104,19 @@ else:
     rec_neuron_sign = None
 
 # Define the cell
+if FLAGS.tau_a_spread:
+    tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
+else:
+    tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=FLAGS.tau_v, n_delay=FLAGS.n_delay,
-            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=FLAGS.thr,
+            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
             dampening_factor=FLAGS.dampening_factor)
+
+flag_dict['tauas'] = tau_a_spread
+print(json.dumps(flag_dict, indent=4))
 
 # Generate input
 input_spikes = tf.placeholder(dtype=tf.float32, shape=(FLAGS.n_batch, None, FLAGS.n_in),

@@ -149,6 +149,20 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
         'neuron_idx': n_idxs,
     }
 
+    if plot:
+        # Plot histogram of intrinsic timescales
+        hist, bins, _ = plt.hist(inferred_taus, bins=20, normed=True)
+        plt.cla()
+        plt.clf()
+        logbins = np.logspace(np.log10(bins[0]), np.log10(bins[-1]), len(bins))
+        hist, bins, _ = plt.hist(inferred_taus, bins=logbins, normed=True, facecolor='green', alpha=0.5,
+                                 edgecolor='black', linewidth=0.5)
+        plt.xscale("log")  # , nonposx='clip')
+        plt.xlabel("intrinsic time constant (ms)")
+        plt.ylabel("percentage of cells")
+        plt_path = os.path.join(data_path, 'autocorr/histogram.pdf')
+        plt.savefig(plt_path, format='pdf')
+
     try:  # if all tau_a-s are stored in flags, we can relate them to the intrinsic time constants (inferred_taus)
         resuls['taua'] = FLAGS.tauas
         print("All tau_a-s available in FLAGS; going to plot relation to intrinsic timescales")
