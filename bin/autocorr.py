@@ -38,7 +38,7 @@ def bin_ndarray(ndarray, new_shape, operation='sum'):
     return ndarray
 
 
-def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20):
+def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_start=0):
     import matplotlib.pyplot as plt
     from scipy.optimize import curve_fit
     from scipy.stats import pearsonr
@@ -47,7 +47,11 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20):
     import math
     import os
 
-    flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
+    if os.path.exists(os.path.join(data_path, 'flags.json')):
+        flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
+    else:
+        flags_dict = json.load(open(os.path.join(data_path, 'flag.json')))
+
     from types import SimpleNamespace
     FLAGS = SimpleNamespace(**flags_dict)
 
@@ -71,9 +75,10 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20):
     large_tau_count = 0
     max_neurons = max_neurons if max_neurons > 0 else FLAGS.n_adaptive
     for n_idx in range(min(FLAGS.n_adaptive, max_neurons)):  # loop over adaptive neurons
-        spk_count = spikes[:, :sample_size, n_idx]
+        spk_count = spikes[:, sample_start:sample_start+sample_size, n_idx]
         bin_spk_count = bin_ndarray(spk_count, (spikes.shape[0], n_bins), operation='sum')  # batch x n_bins
-        if np.count_nonzero(bin_spk_count) == 0:  # FIXME: check if this is correct
+        if np.count_nonzero(spk_count) == 0:  # FIXME: check if this is correct
+            print('skipping dead neuron', n_idx, "mean of spikes over batches = ", np.mean(spk_count))
             no_spike_count += 1
             continue  # skip dead neurons
         # calculate correlations across bins
@@ -98,34 +103,45 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20):
         def func(x, A, B, tau):
             return A * (np.exp(-x / tau) + B)
         xdata = np.arange(len(avg_corrs_neuron))
-        popt, pcov = curve_fit(func, xdata, avg_corrs_neuron)
-        A, B, tau = tuple(popt)
-        tau = tau * bin_size  # convert from bins to ms
-        if tau > max(FLAGS.tauas):
-            continue
-        inferred_As.append(A)
-        inferred_Bs.append(B)
-        inferred_taus.append(tau)
-        n_idxs.append(n_idx)
+        try:
+            popt, pcov = curve_fit(func, xdata, avg_corrs_neuron)
+            A, B, tau = tuple(popt)
+            tau = tau * bin_size  # convert from bins to ms
+            if 'tauas' in FLAGS.__dict__.keys():
+                if tau > max(FLAGS.tauas):
+                    continue
+            inferred_As.append(A)
+            inferred_Bs.append(B)
+            inferred_taus.append(tau)
+            n_idxs.append(n_idx)
 
-        if plot:
-            plt.cla()
-            plt.clf()
-            for l in range(len(corrs_neuron)):
-                for i in range(len(corrs_neuron[l])):
-                    plt.plot(xdata[l], corrs_neuron[l][i], 'ko')  # grid line at zero
-            plt.plot(xdata, np.zeros_like(xdata), 'k--')  # grid line at zero
-            plt.plot(xdata, avg_corrs_neuron, 'ro')  # avg red dots
-            plt.plot(xdata, func(xdata, *popt), 'k-', label='fitted curve')
-            plt.title("Fitted exponential curve tau = {:.0f}ms".format(tau))
-            # plt.show()
-            plt_path = os.path.join(data_path, 'autocorr/autocorr_' + str(n_idx) + '.pdf')
-            plt.savefig(plt_path, format='pdf')
+            if plot:
+                plt.cla()
+                plt.clf()
+                for l in range(len(corrs_neuron)):
+                    for i in range(len(corrs_neuron[l])):
+                        plt.plot(xdata[l], corrs_neuron[l][i], 'ko', markersize=2)  # grid line at zero
+                plt.plot(xdata, np.zeros_like(xdata), 'k--', alpha=0.2)  # grid line at zero
+                plt.plot(xdata, avg_corrs_neuron, 'ro', markersize=4)  # avg red dots
+                plt.plot(xdata, func(xdata, *popt), 'k-', label='fitted curve')
+                plt.title("Fitted exponential curve tau = {:.0f}ms".format(tau))
+                plt.xticks(xdata, [str(50 * (i+1)) for i in xdata])
+                plt.xlabel("time lag (ms)")
+                plt.ylabel("autocorrelation")
+                # plt.show()
+                plt_path = os.path.join(data_path, 'autocorr/autocorr_' + str(n_idx) + '.pdf')
+                plt.savefig(plt_path, format='pdf')
+        except RuntimeError as e:
+            print("Skipping")
+            print(e)
+
     print("SKIPPED: {} dead neurons (no spikes); {} neurons with nan correlation; {} neurons with too long tau"
           .format(no_spike_count, no_corr_count, large_tau_count))
     if len(n_idxs) == 0:
         print("FAIL: no neurons survived the filtering")
         return
+    else:
+        print("Number of OK neurons processed =", len(n_idxs))
     resuls = {
         'tau': inferred_taus,
         'A': inferred_As,
@@ -135,6 +151,7 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20):
 
     try:  # if all tau_a-s are stored in flags, we can relate them to the intrinsic time constants (inferred_taus)
         resuls['taua'] = FLAGS.tauas
+        print("All tau_a-s available in FLAGS; going to plot relation to intrinsic timescales")
         defined_tauas = np.array(FLAGS.tauas)
         print(n_idxs)
         print(defined_tauas.shape)
