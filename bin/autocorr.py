@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.random as rd
 
 
 def bin_ndarray(ndarray, new_shape, operation='sum'):
@@ -38,7 +39,8 @@ def bin_ndarray(ndarray, new_shape, operation='sum'):
     return ndarray
 
 
-def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_start=0):
+def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, plot=True,
+                          max_neurons=20, sample_start=0, label='TEST'):
     import matplotlib.pyplot as plt
     from scipy.optimize import curve_fit
     from scipy.stats import pearsonr
@@ -47,25 +49,18 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
     import math
     import os
 
-    if os.path.exists(os.path.join(data_path, 'flags.json')):
-        flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
-    else:
-        flags_dict = json.load(open(os.path.join(data_path, 'flag.json')))
-
-    from types import SimpleNamespace
-    FLAGS = SimpleNamespace(**flags_dict)
-
     # create directory to store the results
     if not os.path.exists(os.path.join(data_path, 'autocorr')):
         os.makedirs(os.path.join(data_path, 'autocorr'))
 
+    # TODO: find anything with plot in the name and .pickle extension
     plot_data = 'plot_trajectory_data.pickle' if data_file is None else data_file
     data = pickle.load(open(os.path.join(data_path, plot_data), 'rb'))
     bin_size = 50
     sample_size = 500
     assert sample_size % bin_size == 0
     n_bins = int(sample_size / bin_size)  # == 10
-    spikes = data['z'][:, :, FLAGS.n_regular:FLAGS.n_regular+FLAGS.n_adaptive]  # batch x time x neurons
+    spikes = data['z'][:, :, n_start:n_start+n_neurons]  # batch x time x neurons
     inferred_taus = []
     inferred_As = []
     inferred_Bs = []
@@ -73,12 +68,13 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
     no_spike_count = 0
     no_corr_count = 0
     large_tau_count = 0
-    max_neurons = max_neurons if max_neurons > 0 else FLAGS.n_adaptive
-    for n_idx in range(min(FLAGS.n_adaptive, max_neurons)):  # loop over adaptive neurons
+    max_neurons = max_neurons if max_neurons > 0 else n_neurons
+    for n_idx in range(min(n_neurons, max_neurons)):  # loop over adaptive neurons
         spk_count = spikes[:, sample_start:sample_start+sample_size, n_idx]
         bin_spk_count = bin_ndarray(spk_count, (spikes.shape[0], n_bins), operation='sum')  # batch x n_bins
+
         if np.count_nonzero(spk_count) == 0:  # FIXME: check if this is correct
-            print('skipping dead neuron', n_idx, "mean of spikes over batches = ", np.mean(spk_count))
+            print('skipping dead neuron', n_start+n_idx, "mean of spikes over batches = ", np.mean(spk_count))
             no_spike_count += 1
             continue  # skip dead neurons
         # calculate correlations across bins
@@ -113,7 +109,7 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
             inferred_As.append(A)
             inferred_Bs.append(B)
             inferred_taus.append(tau)
-            n_idxs.append(n_idx)
+            n_idxs.append(n_start+n_idx)
 
             if plot:
                 plt.cla()
@@ -129,7 +125,7 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
                 plt.xlabel("time lag (ms)")
                 plt.ylabel("autocorrelation")
                 # plt.show()
-                plt_path = os.path.join(data_path, 'autocorr/autocorr_' + str(n_idx) + '.pdf')
+                plt_path = os.path.join(data_path, 'autocorr/' + label + 'autocorr_' + str(n_idx) + '.pdf')
                 plt.savefig(plt_path, format='pdf')
         except RuntimeError as e:
             print("Skipping")
@@ -158,28 +154,73 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
         hist, bins, _ = plt.hist(inferred_taus, bins=logbins, normed=True, facecolor='green', alpha=0.5,
                                  edgecolor='black', linewidth=0.5)
         plt.xscale("log")  # , nonposx='clip')
+        plt.xlim([1, 10 ** 3])
         plt.xlabel("intrinsic time constant (ms)")
         plt.ylabel("percentage of cells")
-        plt_path = os.path.join(data_path, 'autocorr/histogram.pdf')
+        plt_path = os.path.join(data_path, 'autocorr/' + label + 'histogram.pdf')
         plt.savefig(plt_path, format='pdf')
 
     try:  # if all tau_a-s are stored in flags, we can relate them to the intrinsic time constants (inferred_taus)
         resuls['taua'] = FLAGS.tauas
-        print("All tau_a-s available in FLAGS; going to plot relation to intrinsic timescales")
         defined_tauas = np.array(FLAGS.tauas)
-        print(n_idxs)
-        print(defined_tauas.shape)
         defined_tauas = defined_tauas[n_idxs]  # take only entries for the neurons that have inferred tau
         if plot and len(n_idxs) > 5:
+            print("All tau_a-s available in FLAGS; going to plot relation to intrinsic timescales")
             plt.cla()
             plt.clf()
             plt.plot(defined_tauas, inferred_taus, 'ko')
             plt.xlabel('(defined) adaptation time constant')
             plt.ylabel('(inferred) intrinsic time constant')
             # plt.show()
-            plt_path = os.path.join(data_path, 'autocorr/tau_comp.pdf')
+            plt_path = os.path.join(data_path, 'autocorr/' + label + 'tau_comp.pdf')
             plt.savefig(plt_path, format='pdf')
     except AttributeError:
         pass  # skip if the recorded data does not contain the tau_a-s
-    with open(os.path.join(data_path, 'autocorr/results.json'), 'w') as fp:
+    with open(os.path.join(data_path, 'autocorr/' + label + 'results.json'), 'w') as fp:
         json.dump(resuls, fp, indent=4)
+
+
+def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_start=0):
+    import json
+    import os
+    if os.path.exists(os.path.join(data_path, 'flags.json')):
+        flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
+    else:
+        flags_dict = json.load(open(os.path.join(data_path, 'flag.json')))
+
+    from types import SimpleNamespace
+    FLAGS = SimpleNamespace(**flags_dict)
+    autocorr_plot_neurons(data_path, FLAGS, n_start=0, n_neurons=FLAGS.n_regular, data_file=data_file,
+                          max_neurons=max_neurons, sample_start=sample_start, label='R_')
+    autocorr_plot_neurons(data_path, FLAGS, n_start=FLAGS.n_regular, n_neurons=FLAGS.n_adaptive, data_file=data_file,
+                          max_neurons=max_neurons, sample_start=sample_start, label='A_')
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+    import os
+
+    parser = argparse.ArgumentParser(description='Calculate autocorrelation and plot à la Stokes 2018.')
+    parser.add_argument('path', help='Path to directory that contains flags and plot data.')
+    parser.add_argument('plot', help='Filename of pickle file containing data for plotting.')
+    parser.add_argument('start', type=int, help='Where to start in task sequence to compute the autocorr over 500ms')
+    args = parser.parse_args()
+
+    if not os.path.exists(args.path):
+        print("Given path (" + args.path + ") does not exist")
+        exit(1)
+    if not os.path.isdir(args.path):
+        print("Given path (" + args.path + ") is not a directory")
+        exit(1)
+    print("Attempting to load model from " + args.path)
+
+    if os.path.exists(os.path.join(args.path, 'flags.json')):
+        flags_dict = json.load(open(os.path.join(args.path, 'flags.json')))
+    else:
+        flags_dict = json.load(open(os.path.join(args.path, 'flag.json')))
+
+    from types import SimpleNamespace
+    FLAGS = SimpleNamespace(**flags_dict)
+    autocorr_plot_neurons(args.path, FLAGS, n_start=0, n_neurons=FLAGS.n_regular+FLAGS.n_adaptive,
+                          data_file=args.plot, sample_start=args.start)
