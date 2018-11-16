@@ -104,7 +104,7 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
             A, B, tau = tuple(popt)
             tau = tau * bin_size  # convert from bins to ms
             if 'tauas' in FLAGS.__dict__.keys():
-                if tau > max(FLAGS.tauas):
+                if type(FLAGS.tauas) is list and tau > max(FLAGS.tauas):
                     continue
             inferred_As.append(A)
             inferred_Bs.append(B)

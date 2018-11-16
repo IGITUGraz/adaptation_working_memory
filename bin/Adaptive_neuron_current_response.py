@@ -227,10 +227,14 @@ else:
     rec_neuron_sign = None
 
 # Generate the cell
+if FLAGS.tau_a_spread:
+    tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
+else:
+    tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 cell = ALIFv(
     n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-    n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=FLAGS.tau_a, beta=beta, thr=thr,
+    n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=thr,
     rewiring_connectivity=FLAGS.rewiring_connectivity,
     in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
     dampening_factor=FLAGS.dampening_factor,
@@ -255,7 +259,7 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len):
     spikes = np.zeros((batch_size, seq_len, FLAGS.n_in))
     if FLAGS.sine:
         phase = 0
-        period = 250
+        period = 1000
         sine = np.sin(np.linspace(0 + phase, np.pi * 2 * (FLAGS.seq_len // period) + phase, FLAGS.seq_len))
         sine = np.tile(np.expand_dims(sine, axis=1), (batch_size, 1, 1))
         spikes = sine * FLAGS.input_current * 0.5
@@ -295,7 +299,7 @@ with tf.name_scope('RegularizationLoss'):
     # Firing rate regularization
     av = tf.reduce_mean(z, axis=(0, 1)) / dt
     loss_reg = tf.reduce_sum(tf.square(av - regularization_f0) * FLAGS.reg)
-    err = tf.reduce_mean(av - regularization_f0) * 1000
+    err = tf.reduce_mean(tf.abs(av - regularization_f0)) * 1000
 
 
 # Aggregate the losses
@@ -305,8 +309,6 @@ with tf.name_scope('OptimizationScheme'):
     global_step = tf.Variable(0, dtype=tf.int32, trainable=False)
     learning_rate = tf.Variable(FLAGS.learning_rate, dtype=tf.float32, trainable=False)
     decay_learning_rate_op = tf.assign(learning_rate, learning_rate * FLAGS.lr_decay)
-
-    loss = loss_reg
 
     opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
@@ -321,16 +323,17 @@ with tf.name_scope('OptimizationScheme'):
         #                                         global_step=global_step,
         #                                         all_trained_var_list=tf.trainable_variables())
     else:
-        train_step = opt.minimize(loss=loss, global_step=global_step)
+        train_step = opt.minimize(loss=loss_reg, global_step=global_step)
 
 
 # Real-time plotting
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placement))
 sess.run(tf.global_variables_initializer())
 
-set_w_in = tf.assign(cell.w_in_var,  np.array([[1]]))
-set_w_rec = tf.assign(cell.w_rec_var,  np.array([[0]]))
-sess.run([set_w_in, set_w_rec])
+if (FLAGS.n_regular + FLAGS.n_adaptive) == 1:
+    set_w_in = tf.assign(cell.w_in_var,  np.array([[1]]))
+    set_w_rec = tf.assign(cell.w_rec_var,  np.array([[0]]))
+    sess.run([set_w_in, set_w_rec])
 
 last_final_state_state_training_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32))]
 last_final_state_state_validation_pointer = [sess.run(cell.zero_state(batch_size=FLAGS.batch_val, dtype=tf.float32))]
@@ -424,7 +427,6 @@ tau_delay_list = []
 training_time_list = []
 time_to_ref_list = []
 results_tensors = {
-    'loss': loss,
     'loss_reg': loss_reg,
     'final_state': final_state,
     'av': av,
@@ -574,7 +576,8 @@ if FLAGS.save_data:
     except:
         print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
         flag_dict = FLAGS.__flags
-
+    if type(tau_a_spread) is list:
+        flag_dict['tauas'] = tau_a_spread
     results = {
         'time_to_ref': time_to_ref_list,
         'training_time': training_time_list,
