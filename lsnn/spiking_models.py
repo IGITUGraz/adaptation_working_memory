@@ -346,7 +346,7 @@ class ALIF(LIF):
                  tau_adaptation=200., beta=1.6,
                  rewiring_connectivity=-1, dampening_factor=0.3,
                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
-                 V0=1., add_current=0.):
+                 V0=1., add_current=0., thr_min=0.005):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -381,6 +381,11 @@ class ALIF(LIF):
         self.beta = beta
         self.decay_b = np.exp(-dt / tau_adaptation)
         self.add_current = add_current
+        self.thr_min = thr_min
+        b_max = (thr_min - thr) / beta
+        b_max[~np.isfinite(b_max)] = np.finfo(b_max.dtype).max
+        self.b_max = b_max
+
 
     @property
     def output_size(self):
@@ -418,7 +423,8 @@ class ALIF(LIF):
             state.z, self.W_rec)
 
         new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
-
+        # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
+        new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
         thr = self.thr + new_b * self.beta * self.V0
 
         new_v, new_z = self.LIF_dynamic(
@@ -439,4 +445,4 @@ class ALIF(LIF):
                                    b=new_b,
                                    i_future_buffer=new_i_future_buffer,
                                    z_buffer=new_z_buffer)
-        return [new_z,new_b], new_state
+        return [new_z, thr], new_state

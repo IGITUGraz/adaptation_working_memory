@@ -75,6 +75,9 @@ tf.app.flags.DEFINE_float('dampening_factor', 0.3, '')
 tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike')
+tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
+tf.app.flags.DEFINE_float('nALIF_to_iLIF', 0.35, 'nALIF motif param')
+tf.app.flags.DEFINE_float('iLIF_to_nALIF', -0.15, 'nALIF motif param')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -85,6 +88,7 @@ tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
+tf.app.flags.DEFINE_bool('preserve_state', True, 'keep network state between trials to emulate infinite input stream')
 
 
 def custom_seqence():
@@ -119,6 +123,41 @@ if FLAGS.reproduce == '560_B':
 
     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 
+if FLAGS.reproduce == '560_mnALIF':
+    print("Using the hyperparameters as in 560 paper: nALIF motifs network")
+    FLAGS.beta = -1
+    FLAGS.thr = 0.02
+    FLAGS.n_regular = 60
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+if FLAGS.reproduce == '560_nALIF':
+    print("Using the hyperparameters as in 560 paper: pure nALIF network")
+    FLAGS.beta = -0.5
+    FLAGS.thr = 0.02
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+if FLAGS.reproduce == '560_ALIF':
+    print("Using the hyperparameters as in 560 paper: pure ALIF network")
+    FLAGS.beta = 1
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+
+    custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
 
@@ -179,7 +218,7 @@ cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v
             n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
             rewiring_connectivity=FLAGS.rewiring_connectivity,
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-            dampening_factor=FLAGS.dampening_factor,
+            dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
             )
 
 cell_name = type(cell).__name__
@@ -306,7 +345,12 @@ with tf.name_scope('OptimizationScheme'):
     else:
         train_step = opt.minimize(loss=loss, global_step=global_step)
 
-sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placement))
+config = tf.ConfigProto(log_device_placement=FLAGS.device_placement)
+config.gpu_options.allow_growth = True
+sess = tf.Session(config=config)
+
+if FLAGS.reproduce == '560_mnALIF':
+    w_nALIF_rec = tf.get_variable(name='w_nALIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
 sess.run(tf.global_variables_initializer())
 
 if FLAGS.reproduce == '560_B':
@@ -322,6 +366,23 @@ if FLAGS.reproduce == '560_B':
     # w_out_v = np.array([[1, 1], [1, 1]])
     # set_w_out = tf.assign(w_out, w_out_v)
     # sess.run(set_w_out)
+
+if FLAGS.reproduce == '560_mnALIF':
+    # set_w_in = tf.assign(cell.w_in_var,
+    #                      np.array([[0. for _ in range(FLAGS.n_regular)] + [1. for _ in range(FLAGS.n_adaptive)]]))
+    in_iLIF_mask = [[True for _ in range(FLAGS.n_regular)] + [False for _ in range(FLAGS.n_adaptive)]
+                    for _ in range(FLAGS.n_in)]
+    cell.w_in_var = tf.where(in_iLIF_mask, tf.zeros_like(cell.w_in_var), cell.w_in_var)
+
+    w_iLIF_rec = tf.zeros((FLAGS.n_regular, FLAGS.n_regular))
+    w_iLIF_to_nALIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_nALIF)
+    w_nALIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.nALIF_to_iLIF)
+    synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_nALIF], axis=1)
+    synth_w_rec_row1 = tf.concat([w_nALIF_to_iLIF, w_nALIF_rec], axis=1)
+    synth_w_rec = tf.concat([synth_w_rec_row0, synth_w_rec_row1], axis=0)
+    cell.w_rec_var = synth_w_rec
+    # sess.run([tf.assign(cell.w_rec_var, synth_w_rec),])
+    # cell.w_rec_val = synth_w_rec
 
 if len(FLAGS.checkpoint) > 0:
     saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
@@ -398,8 +459,9 @@ for k_iter in range(FLAGS.n_iter):
     plot_result_tensors['b_con'] = b_con
 
     results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
-    last_final_state_state_validation_pointer[0] = results_values['final_state']
-    last_final_state_state_testing_pointer[0] = results_values['final_state']
+    if FLAGS.preserve_state:
+        last_final_state_state_validation_pointer[0] = results_values['final_state']
+        last_final_state_state_testing_pointer[0] = results_values['final_state']
     t_run = time() - t0
 
     # Storage of the results
@@ -503,7 +565,8 @@ for k_iter in range(FLAGS.n_iter):
     feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
     t0 = time()
     final_state_value, _, _ = sess.run([final_state, train_step, update_regularization_coeff], feed_dict=train_dict)
-    last_final_state_state_training_pointer[0] = final_state_value
+    if FLAGS.preserve_state:
+        last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
 
 print('FINISHED IN {:.2g} s'.format(time() - t_ref))
@@ -560,7 +623,8 @@ if FLAGS.save_data:
         results_values, plot_results_values, in_spk, spk, spk_con, target_nums_np, z_sum_np = sess.run(
             [results_tensors, plot_result_tensors, input_spikes, z, z_con, target_nums, out_plot_char_step],
             feed_dict=test_dict)
-        # last_final_state_state_testing_pointer[0] = results_values['final_state']
+        # if FLAGS.preserve_state:
+        #   last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
 
     if FLAGS.do_plot and FLAGS.monitor_plot:

@@ -299,7 +299,6 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     ax.set_ylabel('thresholds of A', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     sub_data = plot_result_values['b_con'][batch]
-    sub_data = sub_data + FLAGS.thr  # because b_con is only the adaptive term of LSNN threshold
     vars = np.var(sub_data, axis=0)
     cell_with_max_var = np.argsort(vars)[::-1]
     presentation_steps = np.arange(sub_data.shape[0])
