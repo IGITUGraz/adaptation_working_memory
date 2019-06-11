@@ -379,6 +379,7 @@ class ALIF(LIF):
 
         self.tau_adaptation = tau_adaptation
         self.beta = beta
+        self.min_beta = np.min(beta)
         self.decay_b = np.exp(-dt / tau_adaptation)
         self.add_current = add_current
         self.thr_min = thr_min
@@ -423,8 +424,10 @@ class ALIF(LIF):
             state.z, self.W_rec)
 
         new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
-        # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
-        new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
+        if self.min_beta < 0:
+            # in case of negatively adapting threshold (increase excitability):
+            # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
+            new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
         thr = self.thr + new_b * self.beta * self.V0
 
         new_v, new_z = self.LIF_dynamic(

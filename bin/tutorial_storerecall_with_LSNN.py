@@ -76,8 +76,8 @@ tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
-tf.app.flags.DEFINE_float('nALIF_to_iLIF', 0.35, 'nALIF motif param')
-tf.app.flags.DEFINE_float('iLIF_to_nALIF', -0.15, 'nALIF motif param')
+tf.app.flags.DEFINE_float('ELIF_to_iLIF', 0.35, 'ELIF motif param')
+tf.app.flags.DEFINE_float('iLIF_to_ELIF', -0.15, 'ELIF motif param')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -88,7 +88,7 @@ tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
-tf.app.flags.DEFINE_bool('preserve_state', True, 'keep network state between trials to emulate infinite input stream')
+tf.app.flags.DEFINE_bool('preserve_state', False, 'preserve network state between training trials')
 
 
 def custom_seqence():
@@ -99,6 +99,7 @@ def custom_seqence():
     s[13] = FLAGS.n_charac  # store
     s[19] = FLAGS.n_charac + 1  # recall
     return s
+
 
 custom_plot = None
 if FLAGS.reproduce == '560_A':
@@ -123,8 +124,8 @@ if FLAGS.reproduce == '560_B':
 
     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 
-if FLAGS.reproduce == '560_mnALIF':
-    print("Using the hyperparameters as in 560 paper: nALIF motifs network")
+if FLAGS.reproduce == '560_mELIF':
+    print("Using the hyperparameters as in 560 paper: ELIF motifs network")
     FLAGS.beta = -1
     FLAGS.thr = 0.02
     FLAGS.n_regular = 60
@@ -134,8 +135,10 @@ if FLAGS.reproduce == '560_mnALIF':
     FLAGS.tau_a = 2000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
-if FLAGS.reproduce == '560_nALIF':
-    print("Using the hyperparameters as in 560 paper: pure nALIF network")
+    FLAGS.n_iter = 400
+
+if FLAGS.reproduce == '560_ELIF':
+    print("Using the hyperparameters as in 560 paper: pure ELIF network")
     FLAGS.beta = -0.5
     FLAGS.thr = 0.02
     FLAGS.n_regular = 0
@@ -145,6 +148,8 @@ if FLAGS.reproduce == '560_nALIF':
     FLAGS.tau_a = 2000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
 if FLAGS.reproduce == '560_ALIF':
     print("Using the hyperparameters as in 560 paper: pure ALIF network")
     FLAGS.beta = 1
@@ -156,6 +161,7 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.tau_a = 2000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
 
     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 # Run asserts to check seq_delay and seq_len relation is ok
@@ -349,8 +355,8 @@ config = tf.ConfigProto(log_device_placement=FLAGS.device_placement)
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 
-if FLAGS.reproduce == '560_mnALIF':
-    w_nALIF_rec = tf.get_variable(name='w_nALIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
+if FLAGS.reproduce == '560_mELIF':
+    w_ELIF_rec = tf.get_variable(name='w_ELIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
 sess.run(tf.global_variables_initializer())
 
 if FLAGS.reproduce == '560_B':
@@ -367,7 +373,7 @@ if FLAGS.reproduce == '560_B':
     # set_w_out = tf.assign(w_out, w_out_v)
     # sess.run(set_w_out)
 
-if FLAGS.reproduce == '560_mnALIF':
+if FLAGS.reproduce == '560_mELIF':
     # set_w_in = tf.assign(cell.w_in_var,
     #                      np.array([[0. for _ in range(FLAGS.n_regular)] + [1. for _ in range(FLAGS.n_adaptive)]]))
     in_iLIF_mask = [[True for _ in range(FLAGS.n_regular)] + [False for _ in range(FLAGS.n_adaptive)]
@@ -375,10 +381,10 @@ if FLAGS.reproduce == '560_mnALIF':
     cell.w_in_var = tf.where(in_iLIF_mask, tf.zeros_like(cell.w_in_var), cell.w_in_var)
 
     w_iLIF_rec = tf.zeros((FLAGS.n_regular, FLAGS.n_regular))
-    w_iLIF_to_nALIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_nALIF)
-    w_nALIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.nALIF_to_iLIF)
-    synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_nALIF], axis=1)
-    synth_w_rec_row1 = tf.concat([w_nALIF_to_iLIF, w_nALIF_rec], axis=1)
+    w_iLIF_to_ELIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_ELIF)
+    w_ELIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.ELIF_to_iLIF)
+    synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_ELIF], axis=1)
+    synth_w_rec_row1 = tf.concat([w_ELIF_to_iLIF, w_ELIF_rec], axis=1)
     synth_w_rec = tf.concat([synth_w_rec_row0, synth_w_rec_row1], axis=0)
     cell.w_rec_var = synth_w_rec
     # sess.run([tf.assign(cell.w_rec_var, synth_w_rec),])
