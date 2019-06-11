@@ -380,13 +380,13 @@ class ALIF(LIF):
         self.tau_adaptation = tau_adaptation
         self.beta = beta
         self.min_beta = np.min(beta)
+        self.elifs = beta < 0
         self.decay_b = np.exp(-dt / tau_adaptation)
         self.add_current = add_current
         self.thr_min = thr_min
         b_max = (thr_min - thr) / beta
         b_max[~np.isfinite(b_max)] = np.finfo(b_max.dtype).max
         self.b_max = b_max
-
 
     @property
     def output_size(self):
@@ -424,11 +424,14 @@ class ALIF(LIF):
             state.z, self.W_rec)
 
         new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
-        if self.min_beta < 0:
-            # in case of negatively adapting threshold (increase excitability):
-            # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
-            new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
+        # in case of negatively adapting threshold (transient increase in excitability of ELIF neurons):
+        # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
+        clipped_new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
+
         thr = self.thr + new_b * self.beta * self.V0
+        clipped_thr = self.thr + clipped_new_b * self.beta * self.V0
+
+        thr = tf.where(tf.cast(tf.ones([tf.shape(inputs)[0], 1]) * self.elifs, dtype=tf.bool), clipped_thr, thr)
 
         new_v, new_z = self.LIF_dynamic(
             v=state.v,
