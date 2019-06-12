@@ -32,6 +32,7 @@ from tutorial_sequential_mnist_plot import update_mnist_plot
 
 from lsnn.spiking_models import tf_cell_to_savable_dict, exp_convolve, ALIF
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
+from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 import json
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -39,11 +40,12 @@ FLAGS = tf.app.flags.FLAGS
 
 ##
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
+tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_ELIF, 560_ALIF]')
 tf.app.flags.DEFINE_bool('save_data', True, 'whether to save simulation data in result folder')
 ##
 tf.app.flags.DEFINE_integer('n_batch', 256, 'batch size fo the validation set')
-tf.app.flags.DEFINE_integer('n_in', 1, 'number of input units to convert gray level input spikes.')
-tf.app.flags.DEFINE_integer('n_regular', 140, 'number of regular spiking units in the recurrent layer.')
+tf.app.flags.DEFINE_integer('n_in', 80, 'number of input units to convert gray level input spikes.')
+tf.app.flags.DEFINE_integer('n_regular', 120, 'number of regular spiking units in the recurrent layer.')
 tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of adaptive spiking units in the recurrent layer')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 37000, 'number of iterations')
@@ -54,9 +56,10 @@ tf.app.flags.DEFINE_integer('print_every', 400, '')
 ##
 tf.app.flags.DEFINE_float('beta', 1.8, 'Scaling constant of the adaptive threshold')
 # to solve safely set tau_a == expected recall delay
-tf.app.flags.DEFINE_float('tau_a', 600, 'Adaptation time constant')
+tf.app.flags.DEFINE_float('tau_a', 700, 'Adaptation time constant')
 tf.app.flags.DEFINE_float('tau_v', 20, 'Membrane time constant of output readouts')
 tf.app.flags.DEFINE_float('thr', 0.01, 'Baseline threshold voltage')
+tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
 tf.app.flags.DEFINE_float('reg', 1e-3, 'regularization coefficient to target a specific firing rate')
@@ -68,11 +71,28 @@ tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('verbose', True, 'Print many info during training')
 tf.app.flags.DEFINE_bool('neuron_sign', True,
                          'If rewiring is active, this will fix the sign of input and recurrent neurons')
+tf.app.flags.DEFINE_bool('crs_thr', True, 'Generate spikes with threshold crossing method')
 
-tf.app.flags.DEFINE_float('rewiring_connectivity', 0.2,
+tf.app.flags.DEFINE_float('rewiring_connectivity', 0.12,
                           'possible usage of rewiring with ALIF and LIF (0.2 and 0.5 have been tested)')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring (irrelevant without rewiring)')
 tf.app.flags.DEFINE_float('dampening_factor', 0.3, 'Parameter necessary to approximate the spike derivative')
+
+if not FLAGS.crs_thr:
+    FLAGS.n_in = 1
+
+if FLAGS.comment == '':
+    FLAGS.comment = FLAGS.reproduce
+
+if FLAGS.reproduce == '560_ELIF':
+    print("Using the hyperparameters as in 560 paper: LSNN - ELIF network")
+    FLAGS.beta = -0.5
+    FLAGS.thr = 0.02
+
+if FLAGS.reproduce == '560_ALIF':
+    print("Using the hyperparameters as in 560 paper: LSNN - ALIF network")
+    FLAGS.beta = 1
+    FLAGS.thr = 0.01
 
 # Define the flag object as dictionnary for saving purposes
 _, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)
@@ -125,6 +145,33 @@ targets = tf.placeholder(dtype=tf.int64, shape=(FLAGS.n_batch,),
                          name='Targets')  # Lists of target characters of the recall task
 
 
+def find_onset_offset(y, threshold):
+    """
+    Given the input signal `y` with samples,
+    find the indices where `y` increases and descreases through the value `threshold`.
+    Return stacked binary arrays of shape `y` indicating onset and offset threshold crossings.
+    `y` must be 1-D numpy arrays.
+    """
+    if threshold == 1:
+        equal = y == threshold
+        transition_touch = np.where(equal)[0]
+        touch_spikes = np.zeros_like(y)
+        touch_spikes[transition_touch] = 1
+        return np.expand_dims(touch_spikes, axis=0)
+    else:
+        # Find where y crosses the threshold (increasing).
+        lower = y < threshold
+        higher = y >= threshold
+        transition_onset = np.where(lower[:-1] & higher[1:])[0]
+        transition_offset = np.where(higher[:-1] & lower[1:])[0]
+        onset_spikes = np.zeros_like(y)
+        offset_spikes = np.zeros_like(y)
+        onset_spikes[transition_onset] = 1
+        offset_spikes[transition_offset] = 1
+
+        return np.stack((onset_spikes, offset_spikes))
+
+
 # Build a batch
 def get_data_dict(batch_size, type='train'):
     '''
@@ -145,8 +192,34 @@ def get_data_dict(batch_size, type='train'):
 
     target_num = np.argmax(target_oh, axis=1)
 
+    if FLAGS.crs_thr:
+        # GENERATE THRESHOLD CROSSING SPIKES
+        thrs = np.linspace(0, 1, FLAGS.n_in // 2)  # number of input neurons determins the resolution
+        spike_stack = []
+        for img in input_px:  # shape img = (784)
+            Sspikes = None
+            for thr in thrs:
+                if Sspikes is not None:
+                    Sspikes = np.concatenate((Sspikes, find_onset_offset(img, thr)))
+                else:
+                    Sspikes = find_onset_offset(img, thr)
+            Sspikes = np.array(Sspikes)  # shape Sspikes = (31, 784)
+            Sspikes = np.swapaxes(Sspikes, 0, 1)
+            spike_stack.append(Sspikes)
+        spike_stack = np.array(spike_stack)
+        # add output cue neuron, and expand time for two image rows (2*28)
+        out_cue_duration = 2 * 28
+        spike_stack = np.lib.pad(spike_stack, ((0, 0), (0, out_cue_duration), (0, 1)), 'constant')
+        # output cue neuron fires constantly for these additional recall steps
+        spike_stack[:, -out_cue_duration:, -1] = 1
+    else:
+        spike_stack = input_px
+        spike_stack = np.expand_dims(spike_stack, axis=2)
+        # # match input dimensionality (add inactive output cue neuron)
+        # spike_stack = np.lib.pad(spike_stack, ((0, 0), (0, 0), (0, 1)), 'constant')
+
     # transform target one hot from batch x classes to batch x time x classes
-    data_dict = {input_spikes: input_px[:, :, None], targets: target_num}
+    data_dict = {input_spikes: spike_stack, targets: target_num}
     return data_dict, input_px
 
 
@@ -171,7 +244,12 @@ with tf.name_scope('ClassificationLoss'):
 
     # Define the loss function
     out = einsum_bij_jk_to_bik(psp, w_out) + b_out
-    Y_predict = out[:, -1, :]  # shape batch x classes, 32 x 10
+
+    if FLAGS.crs_thr:
+        outt = tf_downsample(out, new_size=(28+2), axis=1)  # 32 x 30 x 10
+        Y_predict = outt[:, -1, :]  # shape batch x classes == n_batch x 10
+    else:
+        Y_predict = out[:, -1, :]  # shape batch x classes == n_batch x 10
 
     loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets, logits=Y_predict))
 
