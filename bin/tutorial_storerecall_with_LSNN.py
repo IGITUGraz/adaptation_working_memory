@@ -434,13 +434,21 @@ w_in_last = sess.run(cell.w_in_val)
 w_rec_last = sess.run(cell.w_rec_val)
 w_out_last = sess.run(w_out)
 
-plot_result_tensors = {'input_spikes': input_spikes,
-                       'z': z,
-                       'z_con': z_con,
-                       'input_nums': input_nums,
-                       'target_nums': target_nums,
-                       'out_avg_per_step': out_plot_char_step,
-                       }
+plot_result_tensors = {
+    'input_spikes': input_spikes,
+    'z': z,
+    'z_con': z_con,
+    'input_nums': input_nums,
+    'target_nums': target_nums,
+    'out_plot_char_step': out_plot_char_step,
+    'psp': psp,
+    'out_plot': out_plot,
+    'recall_charac_mask': recall_charac_mask,
+    'Y': Y,
+    'Y_predict': Y_predict,
+    'b_con': b_con,
+}
+
 t_train = 0
 t_ref = time()
 for k_iter in range(FLAGS.n_iter):
@@ -454,15 +462,6 @@ for k_iter in range(FLAGS.n_iter):
     t0 = time()
     val_dict = get_data_dict(FLAGS.batch_val)
     feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
-
-    plot_result_tensors['psp'] = psp
-    plot_result_tensors['out_plot_char_step'] = out_plot_char_step
-    plot_result_tensors['out_plot'] = out_plot
-    plot_result_tensors['recall_charac_mask'] = recall_charac_mask
-    plot_result_tensors['Y'] = Y
-    plot_result_tensors['Y_predict'] = Y_predict
-
-    plot_result_tensors['b_con'] = b_con
 
     results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
     if FLAGS.preserve_state:
