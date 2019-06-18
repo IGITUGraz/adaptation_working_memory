@@ -53,6 +53,7 @@ tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('lr_decay_every', 2500, 'Decay learning rate every n steps')
 tf.app.flags.DEFINE_integer('print_every', 400, '')
+tf.app.flags.DEFINE_integer('n_repeat', 1, 'Repeat factor to extend time of mnist task')
 ##
 tf.app.flags.DEFINE_float('beta', 1.8, 'Scaling constant of the adaptive threshold')
 # to solve safely set tau_a == expected recall delay
@@ -72,6 +73,7 @@ tf.app.flags.DEFINE_bool('verbose', True, 'Print many info during training')
 tf.app.flags.DEFINE_bool('neuron_sign', True,
                          'If rewiring is active, this will fix the sign of input and recurrent neurons')
 tf.app.flags.DEFINE_bool('crs_thr', True, 'Generate spikes with threshold crossing method')
+tf.app.flags.DEFINE_bool('prm', False, 'Fixed permutation of pixels')
 
 tf.app.flags.DEFINE_float('rewiring_connectivity', 0.12,
                           'possible usage of rewiring with ALIF and LIF (0.2 and 0.5 have been tested)')
@@ -172,7 +174,10 @@ def find_onset_offset(y, threshold):
         return np.stack((onset_spikes, offset_spikes))
 
 
-# Build a batch
+if FLAGS.prm:
+    permutation = np.random.permutation(np.arange(28*28))
+
+
 def get_data_dict(batch_size, type='train'):
     '''
     Generate the dictionary to be fed when running a tensorflow op.
@@ -190,7 +195,13 @@ def get_data_dict(batch_size, type='train'):
     else:
         raise ValueError("Wrong data group: " + str(type))
 
+    if FLAGS.prm:
+        input_px[:] = input_px[:, permutation]
+
     target_num = np.argmax(target_oh, axis=1)
+
+    if FLAGS.n_repeat > 1:
+        input_px = np.repeat(input_px, FLAGS.n_repeat, axis=1)
 
     if FLAGS.crs_thr:
         # GENERATE THRESHOLD CROSSING SPIKES
@@ -208,7 +219,7 @@ def get_data_dict(batch_size, type='train'):
             spike_stack.append(Sspikes)
         spike_stack = np.array(spike_stack)
         # add output cue neuron, and expand time for two image rows (2*28)
-        out_cue_duration = 2 * 28
+        out_cue_duration = 2 * 28 * FLAGS.n_repeat
         spike_stack = np.lib.pad(spike_stack, ((0, 0), (0, out_cue_duration), (0, 1)), 'constant')
         # output cue neuron fires constantly for these additional recall steps
         spike_stack[:, -out_cue_duration:, -1] = 1
@@ -246,7 +257,7 @@ with tf.name_scope('ClassificationLoss'):
     out = einsum_bij_jk_to_bik(psp, w_out) + b_out
 
     if FLAGS.crs_thr:
-        outt = tf_downsample(out, new_size=(28+2), axis=1)  # 32 x 30 x 10
+        outt = tf_downsample(out, new_size=(28+2), axis=1)  # n_batch x 30 x 10
         Y_predict = outt[:, -1, :]  # shape batch x classes == n_batch x 10
     else:
         Y_predict = out[:, -1, :]  # shape batch x classes == n_batch x 10
