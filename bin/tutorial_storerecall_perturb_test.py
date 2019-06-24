@@ -27,8 +27,8 @@ from tutorial_storerecall_utils import generate_storerecall_data, error_rate, ge
     update_plot
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
-from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
-    feed_dict_with_placeholder_container, exp_convolve, ALIF
+from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state, \
+    feed_dict_with_placeholder_container, exp_convolve, ALIF, STP
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
 
 script_name = os.path.basename(__file__)[:-3]
@@ -80,6 +80,9 @@ tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('ELIF_to_iLIF', 0.35, 'ELIF motif param')
 tf.app.flags.DEFINE_float('iLIF_to_ELIF', -0.15, 'ELIF motif param')
+tf.app.flags.DEFINE_float('tauF', 2000, 'STP tau facilitation')
+tf.app.flags.DEFINE_float('tauD', 200, 'STP tau depression')
+tf.app.flags.DEFINE_float('U', .2, 'STP baseline value of u')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -115,6 +118,20 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
+if FLAGS.reproduce == '560_STP':
+    print("Using the hyperparameters as in 560 paper: pure STP network")
+    FLAGS.thr = 0.02
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tauF = 2000
+    FLAGS.tauD = 200
+    FLAGS.U = .2
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
@@ -175,12 +192,22 @@ if FLAGS.tau_a_spread:
 else:
     tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
-cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
-            rewiring_connectivity=FLAGS.rewiring_connectivity,
-            in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-            dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
-            )
+
+if FLAGS.reproduce == '560_STP':
+    cell = STP(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
+               n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
+               rewiring_connectivity=FLAGS.rewiring_connectivity,
+               in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+               dampening_factor=FLAGS.dampening_factor,
+               tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
+               )
+else:
+    cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
+                n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
+                rewiring_connectivity=FLAGS.rewiring_connectivity,
+                in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+                dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
+                )
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
@@ -229,7 +256,10 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
 
 # Define the name of spike train for the different models
 z_stack, final_state = tf.nn.dynamic_rnn(cell, input_spikes, initial_state=init_state_holder, dtype=tf.float32)
-z, b_con = z_stack
+if FLAGS.reproduce == '560_STP':
+    z, stp_u, stp_x = z_stack
+else:
+    z, b_con = z_stack
 z_con = []
 z_all = z
 

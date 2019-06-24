@@ -76,9 +76,9 @@ tf.app.flags.DEFINE_float('dampening_factor', 0.3, '')
 tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .02, 'threshold at which the LSNN neurons spike')
-tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
-tf.app.flags.DEFINE_float('ELIF_to_iLIF', 0.35, 'ELIF motif param')
-tf.app.flags.DEFINE_float('iLIF_to_ELIF', -0.15, 'ELIF motif param')
+tf.app.flags.DEFINE_float('U', .2, 'STP baseline value of u')
+tf.app.flags.DEFINE_float('tauF', 2000, 'STP tau facilitation')
+tf.app.flags.DEFINE_float('tauD', 200, 'STP tau depression')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -89,7 +89,7 @@ tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
-tf.app.flags.DEFINE_bool('preserve_state', False, 'preserve network state between training trials')
+tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
 
 if FLAGS.batch_val is None:
     FLAGS.batch_val = FLAGS.batch_train
@@ -292,7 +292,7 @@ cell = STP(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
            rewiring_connectivity=FLAGS.rewiring_connectivity,
            in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
            dampening_factor=FLAGS.dampening_factor,
-           tau_F=2000.
+           tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
            )
 
 cell_name = type(cell).__name__
@@ -422,40 +422,8 @@ config = tf.ConfigProto(log_device_placement=FLAGS.device_placement)
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 
-if FLAGS.reproduce == '560_mELIF':
-    w_ELIF_rec = tf.get_variable(name='w_ELIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
 sess.run(tf.global_variables_initializer())
 
-if FLAGS.reproduce == '560_B':
-    # set_w_in = tf.assign(cell.w_in_var, np.array([[1, 0]]))
-    # sess.run(set_w_in)
-    # print("w_in", sess.run(cell.w_in_var))
-
-    w_rec = np.array([[0, -1], [-1, 0]])
-    set_w_rec = tf.assign(cell.w_rec_var, w_rec)
-    sess.run(set_w_rec)
-    print("w_rec", sess.run(cell.w_rec_var))
-
-    # w_out_v = np.array([[1, 1], [1, 1]])
-    # set_w_out = tf.assign(w_out, w_out_v)
-    # sess.run(set_w_out)
-
-if FLAGS.reproduce == '560_mELIF':
-    # set_w_in = tf.assign(cell.w_in_var,
-    #                      np.array([[0. for _ in range(FLAGS.n_regular)] + [1. for _ in range(FLAGS.n_adaptive)]]))
-    in_iLIF_mask = [[True for _ in range(FLAGS.n_regular)] + [False for _ in range(FLAGS.n_adaptive)]
-                    for _ in range(FLAGS.n_in)]
-    cell.w_in_var = tf.where(in_iLIF_mask, tf.zeros_like(cell.w_in_var), cell.w_in_var)
-
-    w_iLIF_rec = tf.zeros((FLAGS.n_regular, FLAGS.n_regular))
-    w_iLIF_to_ELIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_ELIF)
-    w_ELIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.ELIF_to_iLIF)
-    synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_ELIF], axis=1)
-    synth_w_rec_row1 = tf.concat([w_ELIF_to_iLIF, w_ELIF_rec], axis=1)
-    synth_w_rec = tf.concat([synth_w_rec_row0, synth_w_rec_row1], axis=0)
-    cell.w_rec_var = synth_w_rec
-    # sess.run([tf.assign(cell.w_rec_var, synth_w_rec),])
-    # cell.w_rec_val = synth_w_rec
 
 if len(FLAGS.checkpoint) > 0:
     saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
