@@ -124,6 +124,7 @@ if FLAGS.reproduce == '560_ALIF':
 
 if FLAGS.reproduce == '560_STP':
     print("Using the hyperparameters as in 560 paper: pure STP network")
+    FLAGS.n_delay = 1
     FLAGS.thr = 0.02
     FLAGS.n_regular = 0
     FLAGS.n_adaptive = 60
