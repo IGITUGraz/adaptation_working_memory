@@ -28,7 +28,7 @@ from matplotlib import collections as mc, patches
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
-    feed_dict_with_placeholder_container, exp_convolve, STP
+    feed_dict_with_placeholder_container, exp_convolve, STP, STPasync
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
 
 script_name = os.path.basename(__file__)[:-3]
@@ -287,7 +287,7 @@ else:
     rec_neuron_sign = None
 
 # Generate the cell
-cell = STP(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
+cell = STPasync(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
            n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
            rewiring_connectivity=FLAGS.rewiring_connectivity,
            in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,

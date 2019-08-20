@@ -567,3 +567,149 @@ class STP(LIF):
                                    i_future_buffer=new_i_future_buffer,
                                    z_buffer=new_z_buffer)
         return [new_z, new_u, new_x], new_state
+
+
+STPasyncStateTuple = namedtuple('STPasyncState', (
+    'z',
+    'v',
+    'r',
+    'u',
+    'x',
+))
+
+
+class STPasync(Cell):
+    def __init__(self, n_in, n_rec, tau=20, thr=0.01,
+                 dt=1., n_refractory=0, dtype=tf.float32,
+                 tau_D=200., tau_F=1500., U=0.2,
+                 rewiring_connectivity=-1, dampening_factor=0.3,
+                 in_neuron_sign=None, rec_neuron_sign=None, add_current=0.,
+                 w_in_init=None, w_rec_init=None,
+                 ):
+        """
+        Tensorflow cell object that simulates a LIF neuron with short term plasticity dynamic on synapses.
+
+        :param n_in: number of input neurons
+        :param n_rec: number of recurrent neurons
+        :param tau: membrane time constant
+        :param thr: threshold voltage
+        :param dt: time step of the simulation
+        :param n_refractory: number of refractory time steps
+        :param dtype: data type of the cell tensors
+        :param n_delay: number of synaptic delay, the delay range goes from 1 to n_delay time steps
+        :param tau_adaptation: adaptation time constant for the threshold voltage
+        :param beta: amplitude of adpatation
+        :param rewiring_connectivity: number of non-zero synapses in weight matrices (at initialization)
+        :param in_neuron_sign: vector of +1, -1 to specify input neuron signs
+        :param rec_neuron_sign: same of recurrent neurons
+        :param injected_noise_current: amplitude of current noise
+        :param V0: to choose voltage unit, specify the value of V0=1 Volt in the desired unit (example V0=1000 to set voltage in millivolts)
+        """
+        self.n_refractory = n_refractory
+        self.dampening_factor = dampening_factor
+        self.dt = dt
+        self.n_in = n_in
+        self.n_rec = n_rec
+        self.data_type = dtype
+        self._num_units = self.n_rec
+        self.tau = tau
+        self._decay = tf.exp(-dt / tau)
+        self.thr = thr
+
+        with tf.variable_scope('InputWeights'):
+            # Input weights
+            if 0 < rewiring_connectivity < 1:
+                self.w_in_val, self.w_in_sign, self.w_in_var, _, _, _ = \
+                    weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign)
+            else:
+                init_w_in_var = w_in_init if w_in_init is not None else \
+                    (rd.randn(n_in, n_rec) / np.sqrt(n_in)).astype(np.float32)
+                self.w_in_var = tf.get_variable("InputWeight", initializer=init_w_in_var, dtype=dtype)
+                self.w_in_val = self.w_in_var
+
+        with tf.variable_scope('RecWeights'):
+            if 0 < rewiring_connectivity < 1:
+                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _, _, _ = \
+                    weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign)
+            else:
+                init_w_rec_var = w_rec_init if w_rec_init is not None else \
+                    (rd.randn(n_rec, n_rec) / np.sqrt(n_rec)).astype(np.float32)
+                self.w_rec_var = tf.get_variable('RecurrentWeight', initializer=init_w_rec_var, dtype=dtype)
+
+            self.w_rec_val = self.w_rec_var
+            self.recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
+            # Disconnect autotapse
+            self.w_rec_val = tf.where(self.recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val), self.w_rec_val)
+
+        self.tau_D = tau_D
+        self.tau_F = tau_F
+        self.U = U
+        self.add_current = add_current
+
+    @property
+    def output_size(self):
+        return [self.n_rec, self.n_rec, self.n_rec]
+
+    @property
+    def state_size(self):
+        return STPasyncStateTuple(
+            v=self.n_rec,
+            z=self.n_rec,
+            r=self.n_rec,
+            u=self.n_rec,
+            x=self.n_rec,
+        )
+
+    def zero_state(self, batch_size, dtype, n_rec=None):
+        if n_rec is None: n_rec = self.n_rec
+
+        v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        u0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype) * self.U
+        x0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype)
+
+        return STPasyncStateTuple(
+            v=v0,
+            z=z0,
+            r=r0,
+            u=u0,
+            x=x0,
+        )
+
+    def compute_z(self, v):
+        v_scaled = (v - self.thr) / self.thr
+        z = SpikeFunction(v_scaled, self.dampening_factor)
+        z = z * 1 / self.dt
+        return z
+
+    def __call__(self, inputs, state, scope=None, dtype=tf.float32):
+
+        ux = tf.multiply(state.u, state.x)  # (batch, neuron)
+        w_rec_stp = tf.einsum('bi,ij->bij', ux, self.w_rec_val)  # (batch, neuron, neuron)
+
+        i_in = tf.matmul(inputs, self.w_in_val)
+        i_rec = tf.einsum('bi,bij->bj', state.z, w_rec_stp)
+        i_t = i_in + i_rec
+
+        i_reset = state.z * self.thr * self.dt
+
+        new_v = self._decay * state.v + i_t - i_reset
+
+        new_u = state.u + (self.U - state.u) / self.tau_F + self.U * (1 - state.u) * state.z
+        new_x = state.x + (1 - state.x) / self.tau_D - state.u * state.x * state.z
+
+        # Spike generation
+        is_refractory = tf.greater(state.r, .1)
+        zeros_like_spikes = tf.zeros_like(state.z)
+        new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v))
+        new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
+                                 0., float(self.n_refractory))
+
+        new_state = STPasyncStateTuple(
+            v=new_v,
+            z=new_z,
+            r=new_r,
+            u=new_u,
+            x=new_x)
+        return [new_z, new_u, new_x], new_state
