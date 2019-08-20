@@ -573,6 +573,7 @@ STPasyncStateTuple = namedtuple('STPasyncState', (
     'z',
     'v',
     'r',
+    'c',
     'u',
     'x',
 ))
@@ -656,6 +657,7 @@ class STPasync(Cell):
             v=self.n_rec,
             z=self.n_rec,
             r=self.n_rec,
+            c=self.n_rec,
             u=self.n_rec,
             x=self.n_rec,
         )
@@ -666,6 +668,7 @@ class STPasync(Cell):
         v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        c0 = tf.zeros(shape=(batch_size, n_rec), dtype=tf.int16)
         u0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype) * self.U
         x0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype)
 
@@ -673,6 +676,7 @@ class STPasync(Cell):
             v=v0,
             z=z0,
             r=r0,
+            c=c0,
             u=u0,
             x=x0,
         )
@@ -696,8 +700,12 @@ class STPasync(Cell):
 
         new_v = self._decay * state.v + i_t - i_reset
 
-        new_u = state.u + (self.U - state.u) / self.tau_F + self.U * (1 - state.u) * state.z
-        new_x = state.x + (1 - state.x) / self.tau_D - state.u * state.x * state.z
+        new_u = tf.where(tf.equal(state.z, tf.ones_like(state.z)),
+                         self.U + state.u * (1. - self.U) * tf.exp(-state.c / self.tau_F),
+                         state.u)
+        new_x = tf.where(tf.equal(state.z, tf.ones_like(state.z)),
+                         1. + (state.x - state.u * state.x - 1.) * tf.exp(-state.c / self.tau_D),
+                         state.x)
 
         # Spike generation
         is_refractory = tf.greater(state.r, .1)
@@ -705,11 +713,14 @@ class STPasync(Cell):
         new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v))
         new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
                                  0., float(self.n_refractory))
+        new_c = state.c + (tf.ones_like(new_z) - new_z) - new_z * state.c
 
         new_state = STPasyncStateTuple(
             v=new_v,
             z=new_z,
             r=new_r,
+            c=new_c,
             u=new_u,
-            x=new_x)
+            x=new_x,
+        )
         return [new_z, new_u, new_x], new_state

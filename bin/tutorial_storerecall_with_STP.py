@@ -287,13 +287,14 @@ else:
     rec_neuron_sign = None
 
 # Generate the cell
-cell = STPasync(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
-           n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
-           rewiring_connectivity=FLAGS.rewiring_connectivity,
-           in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-           dampening_factor=FLAGS.dampening_factor,
-           tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
-           )
+cell = STPasync(
+    n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
+    n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
+    rewiring_connectivity=FLAGS.rewiring_connectivity,
+    in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+    dampening_factor=FLAGS.dampening_factor,
+    tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
+)
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
