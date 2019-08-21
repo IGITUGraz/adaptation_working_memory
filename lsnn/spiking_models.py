@@ -620,7 +620,7 @@ class STPasync(Cell):
         with tf.variable_scope('InputWeights'):
             # Input weights
             if 0 < rewiring_connectivity < 1:
-                self.w_in_val, self.w_in_sign, self.w_in_var, _, _, _ = \
+                self.w_in_val, self.w_in_sign, self.w_in_var, _ = \
                     weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign)
             else:
                 init_w_in_var = w_in_init if w_in_init is not None else \
@@ -630,7 +630,7 @@ class STPasync(Cell):
 
         with tf.variable_scope('RecWeights'):
             if 0 < rewiring_connectivity < 1:
-                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _, _, _ = \
+                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _ = \
                     weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign)
             else:
                 init_w_rec_var = w_rec_init if w_rec_init is not None else \
@@ -668,7 +668,7 @@ class STPasync(Cell):
         v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        c0 = tf.zeros(shape=(batch_size, n_rec), dtype=tf.int16)
+        c0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         u0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype) * self.U
         x0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype)
 
@@ -717,7 +717,7 @@ class STPasync(Cell):
         is_refractory = tf.greater(state.r, .1)
         zeros_like_spikes = tf.zeros_like(state.z)
         new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v))
-        new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
+        new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1.,
                                  0., float(self.n_refractory))
         new_c = state.c + (tf.ones_like(new_z) - new_z) - new_z * state.c
 

@@ -61,13 +61,13 @@ tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 ##
-tf.app.flags.DEFINE_float('stop_crit', 0.0, 'Stopping criterion. Stops training if error goes below this value')
+tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.3, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 1., 'regularization coefficient')
+tf.app.flags.DEFINE_float('reg', 0.01, 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring')
@@ -77,8 +77,8 @@ tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .02, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('U', .2, 'STP baseline value of u')
-tf.app.flags.DEFINE_float('tauF', 200, 'STP tau facilitation')
-tf.app.flags.DEFINE_float('tauD', 2000, 'STP tau depression')
+tf.app.flags.DEFINE_float('tauF', 100, 'STP tau facilitation')
+tf.app.flags.DEFINE_float('tauD', 1200, 'STP tau depression')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
@@ -106,9 +106,9 @@ def custom_seqence():
     s[19] = FLAGS.n_charac + 1  # recall
     return s
 
+
 custom_plot = None
 # custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
-
 
 
 def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_per_raster=100):
