@@ -64,19 +64,29 @@ def update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_data, batch=0, n_max_
 
     # debug plot for psp-s or biases
     ax = ax_list[3]
-    ax.set_ylabel('thresholds of A', fontsize=fs)
-    threshold_data = plot_data['b_con'][batch]
-    threshold_data = threshold_data * cell.beta + FLAGS.thr
-    # subsample data to inlude only traces which achieve heigher threshold
-    maxthr = np.amax(threshold_data, axis=0)
-    mask = maxthr>np.mean(maxthr)*1.5
-    ax.plot(threshold_data[:, mask], color='r', label='Output', alpha=0.5, linewidth=0.8)
-    # set x axis limits
-    ax.set_xlim([0, threshold_data.shape[0]])
+    if 'b_con' in plot_data:
+        ax.set_ylabel('thresholds of A', fontsize=fs)
+        threshold_data = plot_data['b_con'][batch]
+        threshold_data = threshold_data * cell.beta + FLAGS.thr
+        # subsample data to inlude only traces which achieve heigher threshold
+        maxthr = np.amax(threshold_data, axis=0)
+        mask = maxthr>np.mean(maxthr)*1.5
+        ax.plot(threshold_data[:, mask], color='r', label='Output', alpha=0.5, linewidth=0.8)
+        # set axis limits
+        ax.set_xlim([0, threshold_data.shape[0]])
+        ax.set_yticks([np.amin(threshold_data[:, mask]), np.amax(threshold_data[:, mask])])
+    elif 'u' in plot_data and 'x' in plot_data:
+        ax.set_ylabel('STP u, x', fontsize=fs)
+        u_data = plot_data['u'][batch]
+        x_data = plot_data['x'][batch]
+        ax.plot(u_data, color='b', alpha=0.4, linewidth=1, label="u")
+        ax.plot(x_data, color='r', alpha=0.4, linewidth=1, label="x")
+        # set axis limits
+        ax.axis([0, u_data.shape[0], 0., 1.])
+        ax.set_yticks([np.amin(u_data), np.amax(u_data)])
     # bottom spine only needed for the bottom plot
     hide_bottom_axis(ax)
     # y axis
-    ax.set_yticks([np.amin(threshold_data[:, mask]), np.amax(threshold_data[:, mask])])
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     # remove leading 0 and show only two decimal places for the threshold y ticks
     fig.canvas.draw()
