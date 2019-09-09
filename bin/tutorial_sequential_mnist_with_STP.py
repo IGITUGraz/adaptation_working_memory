@@ -27,7 +27,7 @@ from time import time
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file, get_storage_path_reference
+from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file, get_storage_path_reference, NumpyAwareEncoder
 from tutorial_sequential_mnist_plot import update_mnist_plot
 
 from lsnn.spiking_models import tf_cell_to_savable_dict, exp_convolve, STPasync
@@ -144,7 +144,7 @@ cell = STPasync(
 )
 
 flag_dict['tauas'] = tau_a_spread
-print(json.dumps(flag_dict, indent=4))
+print(json.dumps(flag_dict, indent=4, cls=NumpyAwareEncoder))
 
 # Generate input
 input_spikes = tf.placeholder(dtype=tf.float32, shape=(FLAGS.n_batch, None, FLAGS.n_in),

@@ -47,13 +47,13 @@ class NumpyAwareEncoder(json.JSONEncoder):
             return float(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
+        elif isinstance(obj, tf.flags.Flag):
+            return obj.value
         else:
             return super(NumpyAwareEncoder, self).default(obj)
 
 
-
 ## GENERAL
-
 def save_file(obj, path, file_name, file_type='pickle'):
 
     # Put the file type at the end if needed
