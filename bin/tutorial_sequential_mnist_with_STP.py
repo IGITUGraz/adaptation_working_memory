@@ -43,10 +43,10 @@ tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored result
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_ELIF, 560_ALIF]')
 tf.app.flags.DEFINE_bool('save_data', True, 'whether to save simulation data in result folder')
 ##
-tf.app.flags.DEFINE_integer('n_batch', 256, 'batch size fo the validation set')
+tf.app.flags.DEFINE_integer('n_batch', 64, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('n_in', 80, 'number of input units to convert gray level input spikes.')
-tf.app.flags.DEFINE_integer('n_regular', 120, 'number of regular spiking units in the recurrent layer.')
-tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of adaptive spiking units in the recurrent layer')
+tf.app.flags.DEFINE_integer('n_regular', 0, 'number of regular spiking units in the recurrent layer.')
+tf.app.flags.DEFINE_integer('n_adaptive', 200, 'number of adaptive spiking units in the recurrent layer')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 37000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
@@ -59,7 +59,7 @@ tf.app.flags.DEFINE_float('beta', 1.8, 'Scaling constant of the adaptive thresho
 # to solve safely set tau_a == expected recall delay
 tf.app.flags.DEFINE_float('tau_a', 700, 'Adaptation time constant')
 tf.app.flags.DEFINE_float('tau_v', 20, 'Membrane time constant of output readouts')
-tf.app.flags.DEFINE_float('thr', 0.01, 'Baseline threshold voltage')
+tf.app.flags.DEFINE_float('thr', 0.08, 'Baseline threshold voltage')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
@@ -101,6 +101,7 @@ if FLAGS.reproduce == '560_ALIF':
 
 # Define the flag object as dictionnary for saving purposes
 _, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)
+storage_path = storage_path + '_' + FLAGS.comment
 if FLAGS.save_data:
     os.makedirs(storage_path, exist_ok=True)
     save_file(flag_dict, storage_path, 'flag', 'json')

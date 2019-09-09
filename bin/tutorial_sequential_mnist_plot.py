@@ -67,14 +67,14 @@ def update_mnist_plot(ax_list, fig, plt, cell, FLAGS, plot_data, batch=0, n_max_
     if 'b_con' in plot_data:
         ax.set_ylabel('thresholds of A', fontsize=fs)
         threshold_data = plot_data['b_con'][batch]
-        threshold_data = threshold_data * cell.beta + FLAGS.thr
+        # threshold_data = threshold_data * cell.beta + FLAGS.thr
         # subsample data to inlude only traces which achieve heigher threshold
         maxthr = np.amax(threshold_data, axis=0)
         mask = maxthr>np.mean(maxthr)*1.5
-        ax.plot(threshold_data[:, mask], color='r', label='Output', alpha=0.5, linewidth=0.8)
+        ax.plot(threshold_data, color='r', label='Output', alpha=0.5, linewidth=0.8)
         # set axis limits
         ax.set_xlim([0, threshold_data.shape[0]])
-        ax.set_yticks([np.amin(threshold_data[:, mask]), np.amax(threshold_data[:, mask])])
+        ax.set_yticks([np.amin(threshold_data), np.amax(threshold_data)])
     elif 'u' in plot_data and 'x' in plot_data:
         ax.set_ylabel('STP u, x', fontsize=fs)
         u_data = plot_data['u'][batch]

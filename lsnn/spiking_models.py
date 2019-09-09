@@ -688,18 +688,8 @@ class STPasync(Cell):
         return z
 
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
-
-        # new_u = tf.where(tf.equal(state.z, tf.ones_like(state.z)),
-        #                  self.U + state.u * (1. - self.U) * tf.exp(-1. / self.tau_F),
-        #                  self.U + (state.u - self.U) * tf.exp(-1. / self.tau_F))
-        # new_u = self.U + (state.u - self.U * state.u * state.z) * tf.exp(-1. / self.tau_F)
         new_u = self.U + (state.u - self.U * state.u * state.z - self.U * (1. - state.z)) * tf.exp(-1. / self.tau_F)
-        # new_u = tf.Print(new_u, [tf.shape(new_u)], "new_u shape ", summarize=999)  # (128, 60)
-        # new_x = tf.where(tf.equal(state.z, tf.ones_like(state.z)),
-        #                  1. + (state.x - state.u * state.x - 1.) * tf.exp(-1. / self.tau_D),
-        #                  1. + (state.x - 1.) * tf.exp(-1. / self.tau_D))
         new_x = 1. + (state.x - state.u * state.x * state.z - 1.) * tf.exp(-1. / self.tau_D)
-        # TODO: use gather and index writing (sparse vector)
         # TODO: assert new_u > self.U
 
         ux = tf.multiply(new_u, new_x)  # (batch, neuron)
