@@ -79,7 +79,9 @@ tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons 
 tf.app.flags.DEFINE_float('ELIF_to_iLIF', 0.35, 'ELIF motif param')
 tf.app.flags.DEFINE_float('iLIF_to_ELIF', -0.15, 'ELIF motif param')
 ##
-tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
+tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
+tf.app.flags.DEFINE_bool('tau_a_power', True, 'Power law spread of adaptation time constants')
+tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
 tf.app.flags.DEFINE_bool('do_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('monitor_plot', False, 'Perform plots during training')
@@ -102,40 +104,40 @@ def custom_seqence():
 
 
 custom_plot = None
-if FLAGS.reproduce == '560_A':
-    print("Using the hyperparameters as in 560 paper: many neurons")
-    FLAGS.n_regular = 10
-    FLAGS.n_adaptive = 10
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
-    FLAGS.n_in = 40
-
-    custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
-
-if FLAGS.reproduce == '560_B':
-    print("Using the hyperparameters as in 560 paper: two neurons")
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 2
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
-    FLAGS.n_in = 40
-
-    custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
-
-if FLAGS.reproduce == '560_mELIF':
-    print("Using the hyperparameters as in 560 paper: ELIF motifs network")
-    FLAGS.beta = -1
-    FLAGS.thr = 0.02
-    FLAGS.n_regular = 60
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
-    FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
-    FLAGS.n_iter = 400
+# if FLAGS.reproduce == '560_A':
+#     print("Using the hyperparameters as in 560 paper: many neurons")
+#     FLAGS.n_regular = 10
+#     FLAGS.n_adaptive = 10
+#     FLAGS.seq_len = 20
+#     FLAGS.seq_delay = 10
+#     FLAGS.tau_a = 2000
+#     FLAGS.n_in = 40
+#
+#     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+#
+# if FLAGS.reproduce == '560_B':
+#     print("Using the hyperparameters as in 560 paper: two neurons")
+#     FLAGS.n_regular = 0
+#     FLAGS.n_adaptive = 2
+#     FLAGS.seq_len = 20
+#     FLAGS.seq_delay = 10
+#     FLAGS.tau_a = 2000
+#     FLAGS.n_in = 40
+#
+#     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+#
+# if FLAGS.reproduce == '560_mELIF':
+#     print("Using the hyperparameters as in 560 paper: ELIF motifs network")
+#     FLAGS.beta = -1
+#     FLAGS.thr = 0.02
+#     FLAGS.n_regular = 60
+#     FLAGS.n_adaptive = 60
+#     FLAGS.seq_len = 20
+#     FLAGS.seq_delay = 10
+#     FLAGS.tau_a = 2000
+#     FLAGS.n_in = 40
+#     FLAGS.stop_crit = 0.0
+#     FLAGS.n_iter = 400
 
 if FLAGS.reproduce == '560_ELIF':
     print("Using the hyperparameters as in 560 paper: pure ELIF network")
@@ -145,10 +147,11 @@ if FLAGS.reproduce == '560_ELIF':
     FLAGS.n_adaptive = 60
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
+    FLAGS.tau_a = 4000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
+    FLAGS.tau_a_power = True
 
 if FLAGS.reproduce == '560_ALIF':
     print("Using the hyperparameters as in 560 paper: pure ALIF network")
@@ -158,12 +161,15 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.n_adaptive = 60
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
+    FLAGS.tau_a = 4000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
+    FLAGS.tau_a_power = True
 
-    custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+if FLAGS.comment == '':
+    FLAGS.comment = FLAGS.reproduce
+custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
 
@@ -217,6 +223,8 @@ else:
 # Generate the cell
 if FLAGS.tau_a_spread:
     tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
+elif FLAGS.tau_a_power:
+    tau_a_spread = (1. - np.random.power(a=FLAGS.power_exp, size=FLAGS.n_regular+FLAGS.n_adaptive)) * FLAGS.tau_a
 else:
     tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
@@ -355,8 +363,8 @@ config = tf.ConfigProto(log_device_placement=FLAGS.device_placement)
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 
-if FLAGS.reproduce == '560_mELIF':
-    w_ELIF_rec = tf.get_variable(name='w_ELIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
+# if FLAGS.reproduce == '560_mELIF':
+#     w_ELIF_rec = tf.get_variable(name='w_ELIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
 sess.run(tf.global_variables_initializer())
 
 if FLAGS.reproduce == '560_B':
@@ -373,22 +381,22 @@ if FLAGS.reproduce == '560_B':
     # set_w_out = tf.assign(w_out, w_out_v)
     # sess.run(set_w_out)
 
-if FLAGS.reproduce == '560_mELIF':
-    # set_w_in = tf.assign(cell.w_in_var,
-    #                      np.array([[0. for _ in range(FLAGS.n_regular)] + [1. for _ in range(FLAGS.n_adaptive)]]))
-    in_iLIF_mask = [[True for _ in range(FLAGS.n_regular)] + [False for _ in range(FLAGS.n_adaptive)]
-                    for _ in range(FLAGS.n_in)]
-    cell.w_in_var = tf.where(in_iLIF_mask, tf.zeros_like(cell.w_in_var), cell.w_in_var)
-
-    w_iLIF_rec = tf.zeros((FLAGS.n_regular, FLAGS.n_regular))
-    w_iLIF_to_ELIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_ELIF)
-    w_ELIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.ELIF_to_iLIF)
-    synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_ELIF], axis=1)
-    synth_w_rec_row1 = tf.concat([w_ELIF_to_iLIF, w_ELIF_rec], axis=1)
-    synth_w_rec = tf.concat([synth_w_rec_row0, synth_w_rec_row1], axis=0)
-    cell.w_rec_var = synth_w_rec
-    # sess.run([tf.assign(cell.w_rec_var, synth_w_rec),])
-    # cell.w_rec_val = synth_w_rec
+# if FLAGS.reproduce == '560_mELIF':
+#     # set_w_in = tf.assign(cell.w_in_var,
+#     #                      np.array([[0. for _ in range(FLAGS.n_regular)] + [1. for _ in range(FLAGS.n_adaptive)]]))
+#     in_iLIF_mask = [[True for _ in range(FLAGS.n_regular)] + [False for _ in range(FLAGS.n_adaptive)]
+#                     for _ in range(FLAGS.n_in)]
+#     cell.w_in_var = tf.where(in_iLIF_mask, tf.zeros_like(cell.w_in_var), cell.w_in_var)
+#
+#     w_iLIF_rec = tf.zeros((FLAGS.n_regular, FLAGS.n_regular))
+#     w_iLIF_to_ELIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_ELIF)
+#     w_ELIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.ELIF_to_iLIF)
+#     synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_ELIF], axis=1)
+#     synth_w_rec_row1 = tf.concat([w_ELIF_to_iLIF, w_ELIF_rec], axis=1)
+#     synth_w_rec = tf.concat([synth_w_rec_row0, synth_w_rec_row1], axis=0)
+#     cell.w_rec_var = synth_w_rec
+#     # sess.run([tf.assign(cell.w_rec_var, synth_w_rec),])
+#     # cell.w_rec_val = synth_w_rec
 
 if len(FLAGS.checkpoint) > 0:
     saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))

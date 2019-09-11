@@ -96,6 +96,34 @@ if FLAGS.batch_val is None:
 if FLAGS.batch_test is None:
     FLAGS.batch_test = FLAGS.batch_train
 
+if FLAGS.reproduce == '560_STP_F':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
+    FLAGS.tauF = 3000
+    FLAGS.tauD = 1200
+
+if FLAGS.reproduce == '560_STP_D':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
+    FLAGS.tauF = 100
+    FLAGS.tauD = 4000
+
 
 def custom_seqence():
     s = rd.choice([0, 1], size=FLAGS.seq_len)

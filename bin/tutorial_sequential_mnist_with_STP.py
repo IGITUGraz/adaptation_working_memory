@@ -63,7 +63,7 @@ tf.app.flags.DEFINE_float('thr', 0.08, 'Baseline threshold voltage')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 1e-3, 'regularization coefficient to target a specific firing rate')
+tf.app.flags.DEFINE_float('reg', 0.1, 'regularization coefficient to target a specific firing rate')
 tf.app.flags.DEFINE_float('rewiring_temperature', 0., 'regularization coefficient')
 tf.app.flags.DEFINE_float('proportion_excitatory', 0.75, 'proportion of excitatory neurons')
 ##
@@ -89,15 +89,15 @@ if not FLAGS.crs_thr:
 if FLAGS.comment == '':
     FLAGS.comment = FLAGS.reproduce
 
-if FLAGS.reproduce == '560_ELIF':
-    print("Using the hyperparameters as in 560 paper: LSNN - ELIF network")
-    FLAGS.beta = -0.5
-    FLAGS.thr = 0.02
+if FLAGS.reproduce == '560_STP_F':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.tauF = 500
+    FLAGS.tauD = 200
 
-if FLAGS.reproduce == '560_ALIF':
-    print("Using the hyperparameters as in 560 paper: LSNN - ALIF network")
-    FLAGS.beta = 1
-    FLAGS.thr = 0.01
+if FLAGS.reproduce == '560_STP_D':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.tauF = 20
+    FLAGS.tauD = 700
 
 # Define the flag object as dictionnary for saving purposes
 _, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)

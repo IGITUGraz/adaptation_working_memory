@@ -63,12 +63,13 @@ tf.app.flags.DEFINE_float('thr', 0.08, 'Baseline threshold voltage')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 1e-3, 'regularization coefficient to target a specific firing rate')
+tf.app.flags.DEFINE_float('reg', 0.1, 'regularization coefficient to target a specific firing rate')
 tf.app.flags.DEFINE_float('rewiring_temperature', 0., 'regularization coefficient')
 tf.app.flags.DEFINE_float('proportion_excitatory', 0.75, 'proportion of excitatory neurons')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
 tf.app.flags.DEFINE_bool('tau_a_power', True, 'Power law spread of adaptation time constants')
+tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('verbose', True, 'Print many info during training')
 tf.app.flags.DEFINE_bool('neuron_sign', True,
@@ -91,6 +92,7 @@ if FLAGS.reproduce == '560_ELIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ELIF network")
     FLAGS.beta = -0.5
     FLAGS.thr = 0.08
+    FLAGS.tau_a_power = True
     FLAGS.tau_a = 1000
     FLAGS.rewiring_connectivity = -1
 
@@ -135,8 +137,8 @@ else:
 # Define the cell
 if FLAGS.tau_a_spread:
     tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
-if FLAGS.tau_a_power:
-    tau_a_spread = (1. - np.random.power(a=1.5, size=FLAGS.n_regular+FLAGS.n_adaptive)) * FLAGS.tau_a
+elif FLAGS.tau_a_power:
+    tau_a_spread = (1. - np.random.power(a=FLAGS.power_exp, size=FLAGS.n_regular+FLAGS.n_adaptive)) * FLAGS.tau_a
 else:
     tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
