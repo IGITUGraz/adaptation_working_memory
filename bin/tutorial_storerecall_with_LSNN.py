@@ -44,13 +44,13 @@ tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation se
 tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 2, 'number of characters in the recall task')
-tf.app.flags.DEFINE_integer('n_in', 100, 'number of input units.')
-tf.app.flags.DEFINE_integer('n_regular', 60, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 20, 'number of controller units')
+tf.app.flags.DEFINE_integer('n_in', 40, 'number of input units.')
+tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
+tf.app.flags.DEFINE_integer('n_adaptive', 60, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 200, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 400, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
@@ -60,8 +60,8 @@ tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 ##
-tf.app.flags.DEFINE_float('stop_crit', 0.05, 'Stopping criterion. Stops training if error goes below this value')
-tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
+tf.app.flags.DEFINE_float('stop_crit', 0.0, 'Stopping criterion. Stops training if error goes below this value')
+tf.app.flags.DEFINE_float('beta', 1, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
@@ -80,7 +80,7 @@ tf.app.flags.DEFINE_float('ELIF_to_iLIF', 0.35, 'ELIF motif param')
 tf.app.flags.DEFINE_float('iLIF_to_ELIF', -0.15, 'ELIF motif param')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
-tf.app.flags.DEFINE_bool('tau_a_power', True, 'Power law spread of adaptation time constants')
+tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation time constants')
 tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
 tf.app.flags.DEFINE_bool('do_plot', True, 'Perform plots')
@@ -167,9 +167,22 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.n_iter = 400
     FLAGS.tau_a_power = True
 
+if FLAGS.reproduce == '560_table':
+    print("Using the hyperparameters as in 560 paper: ALIF table")
+    FLAGS.batch_train = 64
+    FLAGS.batch_val = 64
+    FLAGS.batch_test = 64
+    FLAGS.beta = 1
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
 if FLAGS.comment == '':
     FLAGS.comment = FLAGS.reproduce
-custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+# custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
 
