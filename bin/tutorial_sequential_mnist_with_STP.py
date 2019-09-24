@@ -30,7 +30,7 @@ import tensorflow as tf
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file, get_storage_path_reference, NumpyAwareEncoder
 from tutorial_sequential_mnist_plot import update_mnist_plot
 
-from lsnn.spiking_models import tf_cell_to_savable_dict, exp_convolve, STPasync
+from lsnn.spiking_models import tf_cell_to_savable_dict, exp_convolve, STP
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 import json
@@ -134,7 +134,7 @@ if FLAGS.tau_a_spread:
 else:
     tau_a_spread = FLAGS.tau_a
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
-cell = STPasync(
+cell = STP(
     n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=FLAGS.tau_v,
     n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
     rewiring_connectivity=FLAGS.rewiring_connectivity,

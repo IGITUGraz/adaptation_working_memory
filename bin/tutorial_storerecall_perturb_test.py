@@ -195,13 +195,14 @@ else:
 beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
 
 if FLAGS.reproduce == '560_STP':
-    cell = STP(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-               n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
-               rewiring_connectivity=FLAGS.rewiring_connectivity,
-               in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-               dampening_factor=FLAGS.dampening_factor,
-               tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
-               )
+    cell = STP(
+        n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
+        n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
+        rewiring_connectivity=FLAGS.rewiring_connectivity,
+        in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+        dampening_factor=FLAGS.dampening_factor,
+        tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
+        )
 else:
     cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
                 n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,

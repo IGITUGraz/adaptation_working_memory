@@ -25,6 +25,7 @@ from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
 from tutorial_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch,\
     update_plot
 
+
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
     feed_dict_with_placeholder_container, exp_convolve, ALIF

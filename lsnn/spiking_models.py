@@ -457,121 +457,6 @@ class ALIF(LIF):
 STPStateTuple = namedtuple('STPState', (
     'z',
     'v',
-    'u',
-    'x',
-
-    'i_future_buffer',
-    'z_buffer'))
-
-
-class STP(LIF):
-    def __init__(self, n_in, n_rec, tau=20, thr=0.01,
-                 dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
-                 tau_D=200., tau_F=1500., U=0.2,
-                 rewiring_connectivity=-1, dampening_factor=0.3,
-                 in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
-                 V0=1., add_current=0.,):
-        """
-        Tensorflow cell object that simulates a LIF neuron with short term plasticity dynamic on synapses.
-
-        :param n_in: number of input neurons
-        :param n_rec: number of recurrent neurons
-        :param tau: membrane time constant
-        :param thr: threshold voltage
-        :param dt: time step of the simulation
-        :param n_refractory: number of refractory time steps
-        :param dtype: data type of the cell tensors
-        :param n_delay: number of synaptic delay, the delay range goes from 1 to n_delay time steps
-        :param tau_adaptation: adaptation time constant for the threshold voltage
-        :param beta: amplitude of adpatation
-        :param rewiring_connectivity: number of non-zero synapses in weight matrices (at initialization)
-        :param in_neuron_sign: vector of +1, -1 to specify input neuron signs
-        :param rec_neuron_sign: same of recurrent neurons
-        :param injected_noise_current: amplitude of current noise
-        :param V0: to choose voltage unit, specify the value of V0=1 Volt in the desired unit (example V0=1000 to set voltage in millivolts)
-        """
-
-        super(STP, self).__init__(n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt, n_refractory=n_refractory,
-                                   dtype=dtype, n_delay=n_delay,
-                                   rewiring_connectivity=rewiring_connectivity,
-                                   dampening_factor=dampening_factor, in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-                                   injected_noise_current=injected_noise_current,
-                                   V0=V0)
-
-        self.tau_D = tau_D
-        self.tau_F = tau_F
-        self.U = U
-        self.add_current = add_current
-
-    @property
-    def output_size(self):
-        return [self.n_rec, self.n_rec, self.n_rec]
-
-    @property
-    def state_size(self):
-        return STPStateTuple(v=self.n_rec,
-                             z=self.n_rec,
-                             u=self.n_rec,
-                             x=self.n_rec,
-                             i_future_buffer=(self.n_rec, self.n_delay),
-                             z_buffer=(self.n_rec, self.n_refractory))
-
-    def zero_state(self, batch_size, dtype, n_rec=None):
-        if n_rec is None: n_rec = self.n_rec
-
-        v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        u0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype) * self.U
-        x0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype)
-
-        i_buff0 = tf.zeros(shape=(batch_size, n_rec, self.n_delay), dtype=dtype)
-        z_buff0 = tf.zeros(shape=(batch_size, n_rec, self.n_refractory), dtype=dtype)
-
-        return STPStateTuple(
-            v=v0,
-            z=z0,
-            u=u0,
-            x=x0,
-            i_future_buffer=i_buff0,
-            z_buffer=z_buff0
-        )
-
-    def __call__(self, inputs, state, scope=None, dtype=tf.float32):
-
-        ux = tf.multiply(state.u, state.x)
-        W_rec_stp = tf.einsum('ijk,bi->bijk', self.W_rec, ux)
-
-        i_future_buffer = state.i_future_buffer + einsum_bi_ijk_to_bjk(inputs, self.W_in) + \
-                tf.einsum('bi,bijk->bjk',state.z, W_rec_stp)
-
-        new_u = state.u + (self.U - state.u) / self.tau_F + self.U * (1 - state.u) * state.z
-        new_x = state.x + (1 - state.x) / self.tau_D - state.u * state.x * state.z
-
-        new_v, new_z = self.LIF_dynamic(
-            v=state.v,
-            z=state.z,
-            z_buffer=state.z_buffer,
-            i_future_buffer=i_future_buffer,
-            decay=self._decay,
-            thr=self.thr,
-            add_current=self.add_current,
-        )
-
-        new_z_buffer = tf_roll(state.z_buffer, new_z, axis=2)
-        new_i_future_buffer = tf_roll(i_future_buffer, axis=2)
-
-        new_state = STPStateTuple(v=new_v,
-                                   z=new_z,
-                                   u=new_u,
-                                   x=new_x,
-                                   i_future_buffer=new_i_future_buffer,
-                                   z_buffer=new_z_buffer)
-        return [new_z, new_u, new_x], new_state
-
-
-STPasyncStateTuple = namedtuple('STPasyncState', (
-    'z',
-    'v',
     'r',
     'c',
     'u',
@@ -579,7 +464,7 @@ STPasyncStateTuple = namedtuple('STPasyncState', (
 ))
 
 
-class STPasync(Cell):
+class STP(Cell):
     def __init__(self, n_in, n_rec, tau=20, thr=0.01,
                  dt=1., n_refractory=0, dtype=tf.float32,
                  tau_D=200., tau_F=1500., U=0.2,
@@ -653,7 +538,7 @@ class STPasync(Cell):
 
     @property
     def state_size(self):
-        return STPasyncStateTuple(
+        return STPStateTuple(
             v=self.n_rec,
             z=self.n_rec,
             r=self.n_rec,
@@ -672,7 +557,7 @@ class STPasync(Cell):
         u0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype) * self.U
         x0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype)
 
-        return STPasyncStateTuple(
+        return STPStateTuple(
             v=v0,
             z=z0,
             r=r0,
@@ -690,7 +575,7 @@ class STPasync(Cell):
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
         new_u = self.U + (state.u - self.U * state.u * state.z - self.U * (1. - state.z)) * tf.exp(-1. / self.tau_F)
         new_x = 1. + (state.x - state.u * state.x * state.z - 1.) * tf.exp(-1. / self.tau_D)
-        # TODO: assert new_u > self.U
+        assert new_u > self.U
 
         ux = tf.multiply(new_u, new_x)  # (batch, neuron)
         w_rec_stp = tf.einsum('bi,ij->bij', ux, self.w_rec_val)  # (batch, neuron, neuron)
@@ -711,7 +596,7 @@ class STPasync(Cell):
                                  0., float(self.n_refractory))
         new_c = state.c + (tf.ones_like(new_z) - new_z) - new_z * state.c
 
-        new_state = STPasyncStateTuple(
+        new_state = STPStateTuple(
             v=new_v,
             z=new_z,
             r=new_r,
