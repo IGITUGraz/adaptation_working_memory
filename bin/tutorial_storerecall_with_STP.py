@@ -52,7 +52,6 @@ tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 400, 'number of iterations')
-tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 20, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 10, 'Expected delay in character steps. Must be <= seq_len - 2')
@@ -107,8 +106,8 @@ if FLAGS.reproduce == '560_STP_F':
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
 
-    FLAGS.tauF = 3000
-    FLAGS.tauD = 1200
+    FLAGS.tauF = 500
+    FLAGS.tauD = 200
 
 if FLAGS.reproduce == '560_STP_D':
     print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
@@ -121,8 +120,8 @@ if FLAGS.reproduce == '560_STP_D':
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
 
-    FLAGS.tauF = 100
-    FLAGS.tauD = 4000
+    FLAGS.tauF = 20
+    FLAGS.tauD = 700
 
 
 def custom_seqence():

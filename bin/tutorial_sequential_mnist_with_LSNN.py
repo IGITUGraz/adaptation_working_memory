@@ -49,7 +49,7 @@ tf.app.flags.DEFINE_integer('n_regular', 0, 'number of regular spiking units in 
 tf.app.flags.DEFINE_integer('n_adaptive', 200, 'number of adaptive spiking units in the recurrent layer')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 37000, 'number of iterations')
-tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
+tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('lr_decay_every', 2500, 'Decay learning rate every n steps')
 tf.app.flags.DEFINE_integer('print_every', 400, '')
