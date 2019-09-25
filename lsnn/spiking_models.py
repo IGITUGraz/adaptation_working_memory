@@ -575,7 +575,7 @@ class STP(Cell):
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
         new_u = self.U + (state.u - self.U * state.u * state.z - self.U * (1. - state.z)) * tf.exp(-1. / self.tau_F)
         new_x = 1. + (state.x - state.u * state.x * state.z - 1.) * tf.exp(-1. / self.tau_D)
-        assert new_u > self.U
+        tf.assert_greater_equal(new_u, self.U)
 
         ux = tf.multiply(new_u, new_x)  # (batch, neuron)
         w_rec_stp = tf.einsum('bi,ij->bij', ux, self.w_rec_val)  # (batch, neuron, neuron)

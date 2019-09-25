@@ -22,13 +22,13 @@ import tensorflow as tf
 from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
 
-from tutorial_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch,\
-    update_plot
+from tutorial_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch, \
+    update_plot, update_stp_plot
 
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
-    feed_dict_with_placeholder_container, exp_convolve, ALIF
+    feed_dict_with_placeholder_container, exp_convolve, ALIF, STP
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
 
 script_name = os.path.basename(__file__)[:-3]
@@ -37,13 +37,14 @@ FLAGS = tf.app.flags.FLAGS
 start_time = datetime.datetime.now()
 
 ##
+tf.app.flags.DEFINE_string('model', None, 'lsnn or stp')
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_A, ...]')
 tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
 tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
-tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
-tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
+tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
+tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 2, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 40, 'number of input units.')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
@@ -54,8 +55,8 @@ tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization
 tf.app.flags.DEFINE_integer('n_iter', 400, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
-tf.app.flags.DEFINE_integer('seq_delay', 6, 'Expected delay in character steps. Must be <= seq_len - 2')
+tf.app.flags.DEFINE_integer('seq_len', 20, 'Number of character steps')
+tf.app.flags.DEFINE_integer('seq_delay', 10, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 200, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
@@ -77,21 +78,99 @@ tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
-tf.app.flags.DEFINE_float('ELIF_to_iLIF', 0.35, 'ELIF motif param')
-tf.app.flags.DEFINE_float('iLIF_to_ELIF', -0.15, 'ELIF motif param')
+tf.app.flags.DEFINE_float('U', .2, 'STP baseline value of u')
+tf.app.flags.DEFINE_float('tauF', 100, 'STP tau facilitation')
+tf.app.flags.DEFINE_float('tauD', 1200, 'STP tau depression')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
 tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation time constants')
 tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
-tf.app.flags.DEFINE_bool('do_plot', True, 'Perform plots')
+tf.app.flags.DEFINE_bool('do_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('monitor_plot', False, 'Perform plots during training')
 tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
-tf.app.flags.DEFINE_bool('preserve_state', False, 'preserve network state between training trials')
+tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
+
+if FLAGS.batch_val is None:
+    FLAGS.batch_val = FLAGS.batch_train
+if FLAGS.batch_test is None:
+    FLAGS.batch_test = FLAGS.batch_train
+
+if FLAGS.reproduce == '560_ELIF':
+    print("Using the hyperparameters as in 560 paper: pure ELIF network")
+    FLAGS.model = 'lsnn'
+    FLAGS.beta = -0.5
+    FLAGS.thr = 0.02
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 4000
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
+if FLAGS.reproduce == '560_ALIF':
+    print("Using the hyperparameters as in 560 paper: pure ALIF network")
+    FLAGS.model = 'lsnn'
+    FLAGS.beta = 1
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 4000
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
+if FLAGS.reproduce == '560_table':
+    print("Using the hyperparameters as in 560 paper: ALIF table")
+    FLAGS.model = 'lsnn'
+    FLAGS.batch_train = 64
+    FLAGS.batch_val = 64
+    FLAGS.batch_test = 64
+    FLAGS.beta = 1
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
+if FLAGS.reproduce == '560_STP_F':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 500
+    FLAGS.tauD = 200
+
+if FLAGS.reproduce == '560_STP_D':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 20
+    FLAGS.tauD = 700
+
+assert FLAGS.model in ['lsnn', 'stp']
 
 
 def custom_seqence():
@@ -105,85 +184,10 @@ def custom_seqence():
 
 
 custom_plot = None
-# if FLAGS.reproduce == '560_A':
-#     print("Using the hyperparameters as in 560 paper: many neurons")
-#     FLAGS.n_regular = 10
-#     FLAGS.n_adaptive = 10
-#     FLAGS.seq_len = 20
-#     FLAGS.seq_delay = 10
-#     FLAGS.tau_a = 2000
-#     FLAGS.n_in = 40
-#
-#     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
-#
-# if FLAGS.reproduce == '560_B':
-#     print("Using the hyperparameters as in 560 paper: two neurons")
-#     FLAGS.n_regular = 0
-#     FLAGS.n_adaptive = 2
-#     FLAGS.seq_len = 20
-#     FLAGS.seq_delay = 10
-#     FLAGS.tau_a = 2000
-#     FLAGS.n_in = 40
-#
-#     custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
-#
-# if FLAGS.reproduce == '560_mELIF':
-#     print("Using the hyperparameters as in 560 paper: ELIF motifs network")
-#     FLAGS.beta = -1
-#     FLAGS.thr = 0.02
-#     FLAGS.n_regular = 60
-#     FLAGS.n_adaptive = 60
-#     FLAGS.seq_len = 20
-#     FLAGS.seq_delay = 10
-#     FLAGS.tau_a = 2000
-#     FLAGS.n_in = 40
-#     FLAGS.stop_crit = 0.0
-#     FLAGS.n_iter = 400
-
-if FLAGS.reproduce == '560_ELIF':
-    print("Using the hyperparameters as in 560 paper: pure ELIF network")
-    FLAGS.beta = -0.5
-    FLAGS.thr = 0.02
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 4000
-    FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
-    FLAGS.n_iter = 400
-    FLAGS.tau_a_power = True
-
-if FLAGS.reproduce == '560_ALIF':
-    print("Using the hyperparameters as in 560 paper: pure ALIF network")
-    FLAGS.beta = 1
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 4000
-    FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
-    FLAGS.n_iter = 400
-    FLAGS.tau_a_power = True
-
-if FLAGS.reproduce == '560_table':
-    print("Using the hyperparameters as in 560 paper: ALIF table")
-    FLAGS.batch_train = 64
-    FLAGS.batch_val = 64
-    FLAGS.batch_test = 64
-    FLAGS.beta = 1
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
-    FLAGS.n_iter = 400
-
 if FLAGS.comment == '':
     FLAGS.comment = FLAGS.reproduce
 # custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
 
@@ -235,19 +239,29 @@ else:
     rec_neuron_sign = None
 
 # Generate the cell
-if FLAGS.tau_a_spread:
-    tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
-elif FLAGS.tau_a_power:
-    tau_a_spread = (1. - np.random.power(a=FLAGS.power_exp, size=FLAGS.n_regular+FLAGS.n_adaptive)) * FLAGS.tau_a
+if FLAGS.model == 'lsnn':
+    if FLAGS.tau_a_spread:
+        tau_a_spread = np.random.uniform(size=FLAGS.n_regular+FLAGS.n_adaptive) * FLAGS.tau_a
+    elif FLAGS.tau_a_power:
+        tau_a_spread = (1. - np.random.power(a=FLAGS.power_exp, size=FLAGS.n_regular+FLAGS.n_adaptive)) * FLAGS.tau_a
+    else:
+        tau_a_spread = FLAGS.tau_a
+    beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
+    cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
+                n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
+                rewiring_connectivity=FLAGS.rewiring_connectivity,
+                in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+                dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
+                )
 else:
-    tau_a_spread = FLAGS.tau_a
-beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
-cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
-            n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
-            rewiring_connectivity=FLAGS.rewiring_connectivity,
-            in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-            dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
-            )
+    cell = STP(
+        n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
+        n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
+        rewiring_connectivity=FLAGS.rewiring_connectivity,
+        in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+        dampening_factor=FLAGS.dampening_factor,
+        tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
+    )
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
@@ -255,7 +269,6 @@ time_stamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 file_reference = '{}_{}_seqlen{}_seqdelay{}_in{}_R{}_A{}_lr{}_tauchar{}_comment{}'.format(
     time_stamp, cell_name, FLAGS.seq_len, FLAGS.seq_delay, FLAGS.n_in, FLAGS.n_regular, FLAGS.n_adaptive,
     FLAGS.learning_rate, FLAGS.tau_char, FLAGS.comment)
-file_reference = file_reference + '_taua' + str(FLAGS.tau_a) + '_beta' + str(FLAGS.beta)
 print('FILE REFERENCE: ' + file_reference)
 
 # Generate input
@@ -296,7 +309,10 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
 
 # Define the name of spike train for the different models
 z_stack, final_state = tf.nn.dynamic_rnn(cell, input_spikes, initial_state=init_state_holder, dtype=tf.float32)
-z, b_con = z_stack
+if FLAGS.model == 'lsnn':
+    z, b_con = z_stack
+else:
+    z, stp_u, stp_x = z_stack
 z_con = []
 z_all = z
 
@@ -377,40 +393,8 @@ config = tf.ConfigProto(log_device_placement=FLAGS.device_placement)
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 
-# if FLAGS.reproduce == '560_mELIF':
-#     w_ELIF_rec = tf.get_variable(name='w_ELIF_rec', shape=[FLAGS.n_adaptive, FLAGS.n_adaptive])
 sess.run(tf.global_variables_initializer())
 
-if FLAGS.reproduce == '560_B':
-    # set_w_in = tf.assign(cell.w_in_var, np.array([[1, 0]]))
-    # sess.run(set_w_in)
-    # print("w_in", sess.run(cell.w_in_var))
-
-    w_rec = np.array([[0, -1], [-1, 0]])
-    set_w_rec = tf.assign(cell.w_rec_var, w_rec)
-    sess.run(set_w_rec)
-    print("w_rec", sess.run(cell.w_rec_var))
-
-    # w_out_v = np.array([[1, 1], [1, 1]])
-    # set_w_out = tf.assign(w_out, w_out_v)
-    # sess.run(set_w_out)
-
-# if FLAGS.reproduce == '560_mELIF':
-#     # set_w_in = tf.assign(cell.w_in_var,
-#     #                      np.array([[0. for _ in range(FLAGS.n_regular)] + [1. for _ in range(FLAGS.n_adaptive)]]))
-#     in_iLIF_mask = [[True for _ in range(FLAGS.n_regular)] + [False for _ in range(FLAGS.n_adaptive)]
-#                     for _ in range(FLAGS.n_in)]
-#     cell.w_in_var = tf.where(in_iLIF_mask, tf.zeros_like(cell.w_in_var), cell.w_in_var)
-#
-#     w_iLIF_rec = tf.zeros((FLAGS.n_regular, FLAGS.n_regular))
-#     w_iLIF_to_ELIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.iLIF_to_ELIF)
-#     w_ELIF_to_iLIF = tf.diag(tf.ones(FLAGS.n_adaptive) * FLAGS.ELIF_to_iLIF)
-#     synth_w_rec_row0 = tf.concat([w_iLIF_rec, w_iLIF_to_ELIF], axis=1)
-#     synth_w_rec_row1 = tf.concat([w_ELIF_to_iLIF, w_ELIF_rec], axis=1)
-#     synth_w_rec = tf.concat([synth_w_rec_row0, synth_w_rec_row1], axis=0)
-#     cell.w_rec_var = synth_w_rec
-#     # sess.run([tf.assign(cell.w_rec_var, synth_w_rec),])
-#     # cell.w_rec_val = synth_w_rec
 
 if len(FLAGS.checkpoint) > 0:
     saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
@@ -468,8 +452,12 @@ plot_result_tensors = {
     'recall_charac_mask': recall_charac_mask,
     'Y': Y,
     'Y_predict': Y_predict,
-    'b_con': b_con,
 }
+if FLAGS.model == 'lsnn':
+    plot_result_tensors['b_con'] = b_con
+else:
+    plot_result_tensors['stp_u'] = stp_u
+    plot_result_tensors['stp_x'] = stp_x
 
 t_train = 0
 t_ref = time()
@@ -575,7 +563,10 @@ for k_iter in range(FLAGS.n_iter):
             w_out_last = results_values['w_out']
 
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            update_plot(plt, ax_list, FLAGS, plot_results_values)
+            if FLAGS.model == 'lsnn':
+                update_plot(plt, ax_list, FLAGS, plot_results_values)
+            else:
+                update_stp_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(result_folder,
                                     'tmp/figure' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
@@ -616,7 +607,8 @@ if FLAGS.save_data:
     except:
         print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
         flag_dict = FLAGS.__flags
-    flag_dict['tauas'] = tau_a_spread
+    if FLAGS.model == 'lsnn':
+        flag_dict['tauas'] = tau_a_spread
     results = {
         'error': validation_error_list[-1],
         'loss': test_loss_list[-1],
@@ -655,7 +647,10 @@ if FLAGS.save_data:
         test_errors.append(results_values['recall_errors'])
 
     if FLAGS.do_plot and FLAGS.monitor_plot:
-        update_plot(plt, ax_list, FLAGS, plot_results_values)
+        if FLAGS.model == 'lsnn':
+            update_plot(plt, ax_list, FLAGS, plot_results_values)
+        else:
+            update_stp_plot(plt, ax_list, FLAGS, plot_results_values)
         fig.savefig(os.path.join(full_path, 'figure_test' + start_time.strftime("%H%M") + '.pdf'), format='pdf')
 
     print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {})'''
