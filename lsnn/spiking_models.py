@@ -554,8 +554,8 @@ class STP(Cell):
         z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         c0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        u0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype) * self.U
-        x0 = tf.ones(shape=(batch_size, n_rec), dtype=dtype)
+        u0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        x0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
 
         return STPStateTuple(
             v=v0,
@@ -573,15 +573,20 @@ class STP(Cell):
         return z
 
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
-        new_u = self.U + (state.u - self.U * state.u * state.z - self.U * (1. - state.z)) * tf.exp(-1. / self.tau_F)
-        new_x = 1. + (state.x - state.u * state.x * state.z - 1.) * tf.exp(-1. / self.tau_D)
-        tf.assert_greater_equal(new_u, self.U)
+        # u = np.exp(-dt / tauF) * u + U * (1. - (u + U)) * z
+        new_u = tf.exp(-self.dt / self.tau_F) * state.u + self.U * (1. - (state.u + self.U)) * state.z
 
-        ux = tf.multiply(new_u, new_x)  # (batch, neuron)
-        w_rec_stp = tf.einsum('bi,ij->bij', ux, self.w_rec_val)  # (batch, neuron, neuron)
+        # x = np.exp(-dt / tauD) * x + u * (1. - x) * z
+        new_x = tf.exp(-self.dt / self.tau_D) * state.x + new_u * (1. - state.x) * state.z
+
+        # u_trc[t] = u + U
+        # x_trc[t] = 1. - x
+        ux = tf.multiply(new_u + self.U, tf.ones_like(new_x) - new_x)  # (batch, neuron)
+        # w_rec_stp = tf.einsum('bi,ij->bij', ux, self.w_rec_val)  # (batch, neuron, neuron)
 
         i_in = tf.matmul(inputs, self.w_in_val)
-        i_rec = tf.einsum('bi,bij->bj', state.z, w_rec_stp)
+        # i_rec = tf.einsum('bi,bij->bj', state.z, w_rec_stp)
+        i_rec = tf.matmul(state.z * ux, self.w_rec_val)
         i_t = i_in + i_rec
 
         i_reset = state.z * self.thr * self.dt
