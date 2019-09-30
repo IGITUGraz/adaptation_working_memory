@@ -577,7 +577,7 @@ class STP(Cell):
         new_u = tf.exp(-self.dt / self.tau_F) * state.u + self.U * (1. - (state.u + self.U)) * state.z
 
         # x = np.exp(-dt / tauD) * x + u * (1. - x) * z
-        new_x = tf.exp(-self.dt / self.tau_D) * state.x + new_u * (1. - state.x) * state.z
+        new_x = tf.exp(-self.dt / self.tau_D) * state.x + (new_u + self.U) * (1. - state.x) * state.z
 
         # u_trc[t] = u + U
         # x_trc[t] = 1. - x
