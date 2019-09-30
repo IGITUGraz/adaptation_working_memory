@@ -591,7 +591,7 @@ class STP(Cell):
 
         i_reset = state.z * self.thr * self.dt
 
-        new_v = self._decay * state.v + i_t - i_reset
+        new_v = self._decay * state.v + (1. - self._decay) * i_t - i_reset
 
         # Spike generation
         is_refractory = tf.greater(state.r, .1)
