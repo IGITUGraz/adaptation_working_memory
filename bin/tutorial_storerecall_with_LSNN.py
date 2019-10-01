@@ -183,10 +183,10 @@ def custom_seqence():
     return s
 
 
-custom_plot = None
 if FLAGS.comment == '':
     FLAGS.comment = FLAGS.reproduce
-# custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+# custom_plot = None
+custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
