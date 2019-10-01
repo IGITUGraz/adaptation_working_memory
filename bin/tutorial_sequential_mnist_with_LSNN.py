@@ -43,12 +43,12 @@ tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored result
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_ELIF, 560_ALIF]')
 tf.app.flags.DEFINE_bool('save_data', True, 'whether to save simulation data in result folder')
 ##
-tf.app.flags.DEFINE_integer('n_batch', 64, 'batch size fo the validation set')
+tf.app.flags.DEFINE_integer('n_batch', 256, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('n_in', 80, 'number of input units to convert gray level input spikes.')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of regular spiking units in the recurrent layer.')
 tf.app.flags.DEFINE_integer('n_adaptive', 200, 'number of adaptive spiking units in the recurrent layer')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 37000, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 36000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('lr_decay_every', 2500, 'Decay learning rate every n steps')
@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_integer('n_repeat', 1, 'Repeat factor to extend time of mnis
 ##
 tf.app.flags.DEFINE_float('beta', 1., 'Scaling constant of the adaptive threshold')
 # to solve safely set tau_a == expected recall delay
-tf.app.flags.DEFINE_float('tau_a', 1000, 'Adaptation time constant')
+tf.app.flags.DEFINE_float('tau_a', 700, 'Adaptation time constant')
 tf.app.flags.DEFINE_float('tau_v', 20, 'Membrane time constant of output readouts')
 tf.app.flags.DEFINE_float('thr', 0.08, 'Baseline threshold voltage')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
@@ -68,7 +68,7 @@ tf.app.flags.DEFINE_float('rewiring_temperature', 0., 'regularization coefficien
 tf.app.flags.DEFINE_float('proportion_excitatory', 0.75, 'proportion of excitatory neurons')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
-tf.app.flags.DEFINE_bool('tau_a_power', True, 'Power law spread of adaptation time constants')
+tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation time constants')
 tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('verbose', True, 'Print many info during training')
@@ -91,18 +91,20 @@ if FLAGS.comment == '':
 if FLAGS.reproduce == '560_ELIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ELIF network")
     FLAGS.beta = -0.5
-    FLAGS.thr = 0.08
-    FLAGS.tau_a_power = True
-    FLAGS.tau_a = 1000
+    FLAGS.thr = 0.01
+    FLAGS.tau_a = 700
     FLAGS.rewiring_connectivity = -1
+    FLAGS.n_regular = 120
+    FLAGS.n_adaptive = 100
 
 if FLAGS.reproduce == '560_ALIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ALIF network")
     FLAGS.beta = 1
-    FLAGS.thr = 0.08
-    FLAGS.tau_a_power = True
-    FLAGS.tau_a = 1000
+    FLAGS.thr = 0.01
+    FLAGS.tau_a = 700
     FLAGS.rewiring_connectivity = -1
+    FLAGS.n_regular = 120
+    FLAGS.n_adaptive = 100
 
 # Define the flag object as dictionnary for saving purposes
 _, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)
@@ -148,9 +150,10 @@ cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=FLAGS
             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
             dampening_factor=FLAGS.dampening_factor)
 
-count, bins, ignored = plt.hist(tau_a_spread, bins=30)
-plt.savefig(os.path.join(storage_path, 'taua_power_dist.pdf'), format='pdf')
-plt.clf()
+if FLAGS.tau_a_power:
+    count, bins, ignored = plt.hist(tau_a_spread, bins=30)
+    plt.savefig(os.path.join(storage_path, 'taua_power_dist.pdf'), format='pdf')
+    plt.clf()
 
 flag_dict['tauas'] = tau_a_spread
 print(json.dumps(flag_dict, indent=4, cls=NumpyAwareEncoder))

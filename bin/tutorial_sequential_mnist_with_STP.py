@@ -43,12 +43,12 @@ tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored result
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_ELIF, 560_ALIF]')
 tf.app.flags.DEFINE_bool('save_data', True, 'whether to save simulation data in result folder')
 ##
-tf.app.flags.DEFINE_integer('n_batch', 64, 'batch size fo the validation set')
+tf.app.flags.DEFINE_integer('n_batch', 256, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('n_in', 80, 'number of input units to convert gray level input spikes.')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of regular spiking units in the recurrent layer.')
 tf.app.flags.DEFINE_integer('n_adaptive', 200, 'number of adaptive spiking units in the recurrent layer')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 37000, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 36000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('lr_decay_every', 2500, 'Decay learning rate every n steps')
 tf.app.flags.DEFINE_integer('print_every', 400, '')
@@ -74,7 +74,7 @@ tf.app.flags.DEFINE_bool('neuron_sign', True,
 tf.app.flags.DEFINE_bool('crs_thr', True, 'Generate spikes with threshold crossing method')
 tf.app.flags.DEFINE_bool('prm', False, 'Fixed permutation of pixels')
 
-tf.app.flags.DEFINE_float('rewiring_connectivity', 0.12,
+tf.app.flags.DEFINE_float('rewiring_connectivity', -1,
                           'possible usage of rewiring with ALIF and LIF (0.2 and 0.5 have been tested)')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring (irrelevant without rewiring)')
 tf.app.flags.DEFINE_float('dampening_factor', 0.3, 'Parameter necessary to approximate the spike derivative')
@@ -92,11 +92,21 @@ if FLAGS.reproduce == '560_STP_F':
     print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
     FLAGS.tauF = 500
     FLAGS.tauD = 200
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 220
+    FLAGS.n_adaptive = 0
+    FLAGS.beta = 0
+    FLAGS.rewiring_connectivity = -1
 
 if FLAGS.reproduce == '560_STP_D':
     print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
     FLAGS.tauF = 20
     FLAGS.tauD = 700
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 220
+    FLAGS.n_adaptive = 0
+    FLAGS.beta = 0
+    FLAGS.rewiring_connectivity = -1
 
 # Define the flag object as dictionnary for saving purposes
 _, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)
