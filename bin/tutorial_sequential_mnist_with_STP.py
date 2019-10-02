@@ -58,7 +58,7 @@ tf.app.flags.DEFINE_float('beta', 1.8, 'Scaling constant of the adaptive thresho
 # to solve safely set tau_a == expected recall delay
 tf.app.flags.DEFINE_float('tau_a', 700, 'Adaptation time constant')
 tf.app.flags.DEFINE_float('tau_v', 20, 'Membrane time constant of output readouts')
-tf.app.flags.DEFINE_float('thr', 0.08, 'Baseline threshold voltage')
+tf.app.flags.DEFINE_float('thr', 0.01, 'Baseline threshold voltage')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')

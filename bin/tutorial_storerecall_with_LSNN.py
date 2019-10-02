@@ -109,7 +109,7 @@ if FLAGS.reproduce == '560_ELIF':
     FLAGS.n_adaptive = 60
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
-    FLAGS.tau_a = 4000
+    FLAGS.tau_a = 2000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
@@ -123,7 +123,7 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.n_adaptive = 60
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
-    FLAGS.tau_a = 4000
+    FLAGS.tau_a = 2000
     FLAGS.n_in = 40
     FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400

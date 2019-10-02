@@ -59,7 +59,7 @@ tf.app.flags.DEFINE_float('beta', 1., 'Scaling constant of the adaptive threshol
 # to solve safely set tau_a == expected recall delay
 tf.app.flags.DEFINE_float('tau_a', 700, 'Adaptation time constant')
 tf.app.flags.DEFINE_float('tau_v', 20, 'Membrane time constant of output readouts')
-tf.app.flags.DEFINE_float('thr', 0.08, 'Baseline threshold voltage')
+tf.app.flags.DEFINE_float('thr', 0.01, 'Baseline threshold voltage')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
@@ -90,8 +90,8 @@ if FLAGS.comment == '':
 
 if FLAGS.reproduce == '560_ELIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ELIF network")
-    FLAGS.beta = -0.5
-    FLAGS.thr = 0.01
+    FLAGS.beta = -0.9
+    FLAGS.thr = 0.04
     FLAGS.tau_a = 700
     FLAGS.rewiring_connectivity = -1
     FLAGS.n_regular = 120
@@ -99,7 +99,7 @@ if FLAGS.reproduce == '560_ELIF':
 
 if FLAGS.reproduce == '560_ALIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ALIF network")
-    FLAGS.beta = 1
+    FLAGS.beta = 1.8
     FLAGS.thr = 0.01
     FLAGS.tau_a = 700
     FLAGS.rewiring_connectivity = -1
