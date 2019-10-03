@@ -581,7 +581,7 @@ class STP(Cell):
 
         # u_trc[t] = u + U
         # x_trc[t] = 1. - x
-        ux = tf.multiply(new_u + self.U, tf.ones_like(new_x) - new_x)  # (batch, neuron)
+        ux = tf.multiply(state.u + self.U, tf.ones_like(state.x) - state.x)  # (batch, neuron)
         # w_rec_stp = tf.einsum('bi,ij->bij', ux, self.w_rec_val)  # (batch, neuron, neuron)
 
         i_in = tf.matmul(inputs, self.w_in_val)
