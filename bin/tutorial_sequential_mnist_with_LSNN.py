@@ -91,7 +91,7 @@ if FLAGS.comment == '':
 if FLAGS.reproduce == '560_ELIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ELIF network")
     FLAGS.beta = -0.9
-    FLAGS.thr = 0.04
+    FLAGS.thr = 0.08
     FLAGS.tau_a = 700
     FLAGS.rewiring_connectivity = -1
     FLAGS.n_regular = 120
@@ -100,7 +100,7 @@ if FLAGS.reproduce == '560_ELIF':
 if FLAGS.reproduce == '560_ALIF':
     print("Using the hyperparameters as in 560 paper: LSNN - ALIF network")
     FLAGS.beta = 1.8
-    FLAGS.thr = 0.01
+    FLAGS.thr = 0.08
     FLAGS.tau_a = 700
     FLAGS.rewiring_connectivity = -1
     FLAGS.n_regular = 120

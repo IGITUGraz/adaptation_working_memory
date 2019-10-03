@@ -92,7 +92,7 @@ if FLAGS.reproduce == '560_STP_F':
     print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
     FLAGS.tauF = 500
     FLAGS.tauD = 200
-    FLAGS.thr = 0.01
+    FLAGS.thr = 0.08
     FLAGS.n_regular = 220
     FLAGS.n_adaptive = 0
     FLAGS.beta = 0
@@ -102,7 +102,7 @@ if FLAGS.reproduce == '560_STP_D':
     print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
     FLAGS.tauF = 20
     FLAGS.tauD = 700
-    FLAGS.thr = 0.01
+    FLAGS.thr = 0.08
     FLAGS.n_regular = 220
     FLAGS.n_adaptive = 0
     FLAGS.beta = 0
