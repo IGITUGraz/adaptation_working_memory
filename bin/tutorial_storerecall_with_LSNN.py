@@ -100,6 +100,19 @@ if FLAGS.batch_val is None:
 if FLAGS.batch_test is None:
     FLAGS.batch_test = FLAGS.batch_train
 
+if FLAGS.reproduce == '560_LIF':
+    print("Using the hyperparameters as in 560 paper: pure ELIF network")
+    FLAGS.model = 'lsnn'
+    FLAGS.beta = 0.0
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 60
+    FLAGS.n_adaptive = 0
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+
 if FLAGS.reproduce == '560_ELIF':
     print("Using the hyperparameters as in 560 paper: pure ELIF network")
     FLAGS.model = 'lsnn'
@@ -169,6 +182,62 @@ if FLAGS.reproduce == '560_STP_D':
     FLAGS.n_iter = 400
     FLAGS.tauF = 20
     FLAGS.tauD = 700
+
+if FLAGS.reproduce == '560_STP_F_scaleAll':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 2000
+    FLAGS.tauD = 800
+
+if FLAGS.reproduce == '560_STP_D_scaleAll':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 60
+    FLAGS.tauD = 2000
+
+if FLAGS.reproduce == '560_STP_F_scaleLarge':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 2000
+    FLAGS.tauD = 200
+
+if FLAGS.reproduce == '560_STP_D_scaleLarge':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.stop_crit = 0.0
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 20
+    FLAGS.tauD = 2000
 
 assert FLAGS.model in ['lsnn', 'stp']
 
