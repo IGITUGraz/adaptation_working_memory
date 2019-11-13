@@ -110,7 +110,6 @@ if FLAGS.reproduce == '560_LIF':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
 
 if FLAGS.reproduce == '560_ELIF':
@@ -124,7 +123,6 @@ if FLAGS.reproduce == '560_ELIF':
     FLAGS.seq_delay = 10
     FLAGS.tau_a = 2000
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
 
 if FLAGS.reproduce == '560_ALIF':
@@ -138,7 +136,6 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.seq_delay = 10
     FLAGS.tau_a = 2000
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
 
 if FLAGS.reproduce == '560_table':
@@ -152,7 +149,6 @@ if FLAGS.reproduce == '560_table':
     FLAGS.n_regular = 0
     FLAGS.n_adaptive = 60
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
 
 if FLAGS.reproduce == '560_STP_F':
@@ -164,7 +160,6 @@ if FLAGS.reproduce == '560_STP_F':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
     FLAGS.tauF = 500
     FLAGS.tauD = 200
@@ -178,7 +173,6 @@ if FLAGS.reproduce == '560_STP_D':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
     FLAGS.tauF = 20
     FLAGS.tauD = 700
@@ -192,7 +186,6 @@ if FLAGS.reproduce == '560_STP_F_scaleAll':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
     FLAGS.tauF = 2000
     FLAGS.tauD = 800
@@ -206,7 +199,6 @@ if FLAGS.reproduce == '560_STP_D_scaleAll':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
     FLAGS.tauF = 60
     FLAGS.tauD = 2000
@@ -220,7 +212,6 @@ if FLAGS.reproduce == '560_STP_F_scaleLarge':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
     FLAGS.tauF = 2000
     FLAGS.tauD = 200
@@ -234,7 +225,6 @@ if FLAGS.reproduce == '560_STP_D_scaleLarge':
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.n_in = 40
-    FLAGS.stop_crit = 0.0
     FLAGS.n_iter = 400
     FLAGS.tauF = 20
     FLAGS.tauD = 2000
@@ -246,8 +236,8 @@ def custom_seqence():
     s = rd.choice([0, 1], size=FLAGS.seq_len)
     s[0] = FLAGS.n_charac  # store
     s[7] = FLAGS.n_charac + 1  # recall
-    s[12] = 1 if s[1] == 0 else 0
-    s[13] = FLAGS.n_charac  # store
+    s[12] = FLAGS.n_charac  # store
+    s[13] = 1 if s[1] == 0 else 0
     s[19] = FLAGS.n_charac + 1  # recall
     return s
 
@@ -700,6 +690,13 @@ if FLAGS.save_data:
             cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
         plot_custom_results_values = sess.run(plot_result_tensors, feed_dict=test_dict)
         save_file(plot_custom_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
+        if FLAGS.do_plot and FLAGS.monitor_plot:
+            for batch in range(10):  # FLAGS.batch_test
+                if FLAGS.model == 'lsnn':
+                    update_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
+                else:
+                    update_stp_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
+                plt.savefig(os.path.join(full_path, 'figure_custom' + str(batch) + '.pdf'), format='pdf')
 
     # Save sample trajectory (input, output, etc. for plotting)
     test_errors = []
