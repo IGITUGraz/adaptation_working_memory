@@ -500,3 +500,41 @@ def offline_plot(data_path, custom_plot=True):
         start_time = datetime.datetime.now()
         fig.savefig(os.path.join(data_path, 'figure_test' + str(b) + '_' + start_time.strftime("%H%M") + '.pdf'),
                     format='pdf')
+
+
+def avg_firingrates_during_delay(data_path):
+    """
+    Calculate average firing rates during delays of custom plot.
+    Data is conditioned on the current memory content
+    [0 (after storing 0), 1 (after storing 1), blank (after recall)]
+    Motivation: check if firing rate is higher during delay if the memory is filled.
+    :param data_path:
+    :return:
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import datetime
+    import pickle
+    import json
+    import os
+
+    flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
+    from types import SimpleNamespace
+    flags = SimpleNamespace(**flags_dict)
+
+    plot_result_values = pickle.load(open(os.path.join(data_path, 'plot_custom_trajectory_data.pickle'), 'rb'))
+    firing_rates = {'0': [], '1': [], 'blank': []}
+    for b in range(flags.batch_test):  # plot_result_values['input_nums'].shape[0]:
+        symbolic_input = plot_result_values['input_nums'][b]
+        z = plot_result_values['z'][b]
+        step = flags.tau_char
+        # index 1 and 12 determine the content of memory during the first and third delay periods
+        # recalls at 7 and 19
+        # relevant periods 1-7 first memory, 8-12 blank, 13-19 second memory
+        firing_rates[str(symbolic_input[1])].append(np.mean(z[1*step:7*step]))
+        firing_rates['blank'].append(np.mean(z[8*step:12*step]))
+        firing_rates[str(symbolic_input[12])].append(np.mean(z[13*step:19*step]))
+    for k in firing_rates.keys():
+        firing_rates[k] = np.mean(firing_rates[k]) * 1000
+        print("AVG Firing rate for memory content ({}) = {:.2g}".format(k, firing_rates[k]))
+    return firing_rates
