@@ -106,6 +106,14 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.n_regular = 120
     FLAGS.n_adaptive = 100
 
+if FLAGS.reproduce == '560_LIF':
+    print("Using the hyperparameters as in 560 paper: LSNN - LIF network")
+    FLAGS.beta = 0.
+    FLAGS.thr = 0.08
+    FLAGS.rewiring_connectivity = -1
+    FLAGS.n_regular = 220
+    FLAGS.n_adaptive = 0
+
 # Define the flag object as dictionnary for saving purposes
 _, storage_path, flag_dict = get_storage_path_reference(__file__, FLAGS, './results/', flags=False)
 storage_path = storage_path + '_' + FLAGS.comment
