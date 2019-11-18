@@ -40,7 +40,23 @@ def bin_ndarray(ndarray, new_shape, operation='sum'):
 
 
 def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, plot=True,
-                          max_neurons=20, sample_start=0, label='TEST'):
+                          max_neurons=-1, sample_starts=[200, 1600, 2600], label='TEST'):
+    """
+    Estimating "intrinsic timescales" of neurons as described in Methods of [1].
+    [1] Wasmuht, D.F., Spaak, E., Buschman, T.J., Miller, E.K. and Stokes, M.G., 2018.
+    Intrinsic neuronal dynamics predict distinct functional roles during working memory.
+    Nature communications, 9(1), p.3499.
+    :param data_path:
+    :param FLAGS:
+    :param n_start: starting index of neurons to consider (use to skip non-adaptive neurons)
+    :param n_neurons: number of neurons to evaluate
+    :param data_file:
+    :param plot:
+    :param max_neurons:
+    :param sample_start: starting time-step indexes to be considered for analysis (following 500ms used)
+    :param label:
+    :return:
+    """
     import matplotlib.pyplot as plt
     from scipy.optimize import curve_fit
     from scipy.stats import pearsonr
@@ -53,11 +69,12 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
     if not os.path.exists(os.path.join(data_path, 'autocorr')):
         os.makedirs(os.path.join(data_path, 'autocorr'))
 
-    # TODO: find anything with plot in the name and .pickle extension
     plot_data = 'plot_trajectory_data.pickle' if data_file is None else data_file
     data = pickle.load(open(os.path.join(data_path, plot_data), 'rb'))
-    bin_size = 50
-    sample_size = 500
+    bin_size = 50  # described in [1]
+    sample_size = 500  # described in [1]
+    if sample_starts is None:
+        sample_starts = [r for r in range(0, data['z'].shape[1] - sample_size, 50)]
     assert sample_size % bin_size == 0
     n_bins = int(sample_size / bin_size)  # == 10
     spikes = data['z'][:, :, n_start:n_start+n_neurons]  # batch x time x neurons
@@ -70,32 +87,40 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
     large_tau_count = 0
     max_neurons = max_neurons if max_neurons > 0 else n_neurons
     for n_idx in range(min(n_neurons, max_neurons)):  # loop over adaptive neurons
-        spk_count = spikes[:, sample_start:sample_start+sample_size, n_idx]
-        bin_spk_count = bin_ndarray(spk_count, (spikes.shape[0], n_bins), operation='sum')  # batch x n_bins
+        for sample_start in sample_starts:
+            spk_count = spikes[:, sample_start:sample_start+sample_size, n_idx]
+            bin_spk_count = bin_ndarray(spk_count, (spikes.shape[0], n_bins), operation='sum')  # batch x n_bins
 
-        if np.count_nonzero(spk_count) == 0:  # FIXME: check if this is correct
-            print('skipping dead neuron', n_start+n_idx, "mean of spikes over batches = ", np.mean(spk_count))
-            no_spike_count += 1
-            continue  # skip dead neurons
-        # calculate correlations across bins
-        lags_idxs = [l for l in range(1, n_bins)]  # idy for [l for l in range(50, 500, 50)]
-        corrs_neuron = []  # black dots
-        for lag_idx in lags_idxs:
-            corr_per_lag = []
-            for i in range(n_bins - lag_idx):
-                pearson_corr_coeff, _ = pearsonr(bin_spk_count[:, i], bin_spk_count[:, i + lag_idx])
-                # print(i, i+lag_idx, pearson_corr_coeff)
-                corr_per_lag.append(pearson_corr_coeff)
-            corrs_neuron.append(corr_per_lag)
+            if np.count_nonzero(spk_count) == 0:  # FIXME: check if this is correct
+                print('skipping dead neuron', n_start+n_idx, "mean of spikes over batches = ", np.mean(spk_count))
+                no_spike_count += 1
+                continue  # skip dead neurons
+            # calculate correlations across bins
+            lags_idxs = [l for l in range(1, n_bins)]  # idy for [l for l in range(50, 500, 50)]
+            corrs_neuron = []  # black dots
+            for corrs_idx, lag_idx in enumerate(lags_idxs):
+                corr_per_lag = []
+                for i in range(n_bins - lag_idx):
+                    pearson_corr_coeff, _ = pearsonr(bin_spk_count[:, i], bin_spk_count[:, i + lag_idx])
+                    # print(i, i+lag_idx, pearson_corr_coeff)
+                    if math.isnan(pearson_corr_coeff) or math.isinf(pearson_corr_coeff):
+                        continue
+                    corr_per_lag.append(pearson_corr_coeff)  # add black dot
+                if len(corrs_neuron) <= corrs_idx:
+                    corrs_neuron.append(corr_per_lag)
+                else:
+                    corrs_neuron[corrs_idx] = corrs_neuron[corrs_idx] + corr_per_lag
+
         avg_corrs_neuron = [np.mean(c) for c in corrs_neuron]  # red dots
         if np.array([math.isnan(c) for c in avg_corrs_neuron]).any():
             no_corr_count += 1
+            print('skipping neuron with nan correlation')  # this means at some lag there were no black dots
             continue  # skip neurons with nan correlation
         # print("---------- neuron ", n_idx)
         # for l in range(len(avg_corrs_neuron)):
         #     print(l*bin_size, avg_corrs_neuron[l])  # print red dots
 
-        # fit curve to black dots
+        # fit curve to red dots
         def func(x, A, B, tau):
             return A * (np.exp(-x / tau) + B)
         xdata = np.arange(len(avg_corrs_neuron))
@@ -103,9 +128,9 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
             popt, pcov = curve_fit(func, xdata, avg_corrs_neuron)
             A, B, tau = tuple(popt)
             tau = tau * bin_size  # convert from bins to ms
-            if 'tauas' in FLAGS.__dict__.keys():
-                if type(FLAGS.tauas) is list and tau > max(FLAGS.tauas):
-                    continue
+            # if 'tauas' in FLAGS.__dict__.keys():
+            #     if type(FLAGS.tauas) is list and tau > max(FLAGS.tauas):
+            #         continue
             inferred_As.append(A)
             inferred_Bs.append(B)
             inferred_taus.append(tau)
@@ -124,8 +149,9 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
                 plt.xticks(xdata, [str(50 * (i+1)) for i in xdata])
                 plt.xlabel("time lag (ms)")
                 plt.ylabel("autocorrelation")
+                plt.tight_layout()
                 # plt.show()
-                plt_path = os.path.join(data_path, 'autocorr/' + label + 'autocorr_' + str(n_idx) + '.pdf')
+                plt_path = os.path.join(data_path, 'autocorr/' + label + 'autocorr_{}_tau{:.0f}.pdf'.format(n_idx, tau))
                 plt.savefig(plt_path, format='pdf')
         except RuntimeError as e:
             print("Skipping")
@@ -145,24 +171,36 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
         'neuron_idx': n_idxs,
     }
 
+    tmp = np.array(inferred_taus)
+    print("num inferred taus total = ",tmp.shape)
+    print("inferred taus = ",tmp)
+    print("num inferred taus < 10 = ",np.where(tmp < 10))
     if plot:
         # Plot histogram of intrinsic timescales
-        hist, bins, _ = plt.hist(inferred_taus, bins=20, normed=True)
+        # hist, bins, _ = plt.hist(inferred_taus, bins=20, normed=True)
         plt.cla()
         plt.clf()
-        logbins = np.logspace(np.log10(bins[0]), np.log10(bins[-1]), len(bins))
-        hist, bins, _ = plt.hist(inferred_taus, bins=logbins, normed=True, facecolor='green', alpha=0.5,
+        # logbins = np.logspace(np.log10(bins[0]), np.log10(bins[-1]), len(bins))
+        logbins = np.logspace(np.log10(10), np.log10(1000), 25)
+        hist, bins, _ = plt.hist(inferred_taus, bins=logbins, normed=False, facecolor='green', alpha=0.5,
                                  edgecolor='black', linewidth=0.5)
         plt.xscale("log")  # , nonposx='clip')
-        plt.xlim([1, 10 ** 3])
-        plt.xlabel("intrinsic time constant (ms)")
+        plt.xlim([10, 10 ** 3])
+        locs, labels = plt.yticks()
+        plt.yticks(locs, ["{:.1f}".format(100 * i/len(inferred_taus)) for i in locs])
+        # plt.yticks([i for i in range(0, int(len(inferred_taus) * 0.16), int(len(inferred_taus) * 0.04))], ['0', '4', '8', '12'])
         plt.ylabel("percentage of cells")
+        # plt.ylabel("num. of cells")
+        plt.xlabel("intrinsic time constant (ms)")
         plt_path = os.path.join(data_path, 'autocorr/' + label + 'histogram.pdf')
         plt.savefig(plt_path, format='pdf')
 
     try:  # if all tau_a-s are stored in flags, we can relate them to the intrinsic time constants (inferred_taus)
         resuls['taua'] = FLAGS.tauas
-        defined_tauas = np.array(FLAGS.tauas)
+        if type(FLAGS.tauas) == int:
+            defined_tauas = np.array([FLAGS.tauas for _ in range(FLAGS.n_adaptive)])
+        else:
+            defined_tauas = np.array(FLAGS.tauas)
         defined_tauas = defined_tauas[n_idxs]  # take only entries for the neurons that have inferred tau
         if plot and len(n_idxs) > 5:
             print("All tau_a-s available in FLAGS; going to plot relation to intrinsic timescales")
@@ -180,7 +218,7 @@ def autocorr_plot_neurons(data_path, FLAGS, n_start, n_neurons, data_file=None, 
         json.dump(resuls, fp, indent=4)
 
 
-def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_start=0):
+def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_starts=[0]):
     import json
     import os
     if os.path.exists(os.path.join(data_path, 'flags.json')):
@@ -191,9 +229,9 @@ def autocorr_plot(data_path, data_file=None, plot=True, max_neurons=20, sample_s
     from types import SimpleNamespace
     FLAGS = SimpleNamespace(**flags_dict)
     autocorr_plot_neurons(data_path, FLAGS, n_start=0, n_neurons=FLAGS.n_regular, data_file=data_file,
-                          max_neurons=max_neurons, sample_start=sample_start, label='R_')
+                          max_neurons=max_neurons, sample_starts=sample_starts, label='R_')
     autocorr_plot_neurons(data_path, FLAGS, n_start=FLAGS.n_regular, n_neurons=FLAGS.n_adaptive, data_file=data_file,
-                          max_neurons=max_neurons, sample_start=sample_start, label='A_')
+                          max_neurons=max_neurons, sample_starts=sample_starts, label='A_')
 
 
 if __name__ == "__main__":
@@ -204,7 +242,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Calculate autocorrelation and plot à la Stokes 2018.')
     parser.add_argument('path', help='Path to directory that contains flags and plot data.')
     parser.add_argument('plot', help='Filename of pickle file containing data for plotting.')
-    parser.add_argument('start', type=int, help='Where to start in task sequence to compute the autocorr over 500ms')
     args = parser.parse_args()
 
     if not os.path.exists(args.path):
@@ -223,4 +260,4 @@ if __name__ == "__main__":
     from types import SimpleNamespace
     FLAGS = SimpleNamespace(**flags_dict)
     autocorr_plot_neurons(args.path, FLAGS, n_start=0, n_neurons=FLAGS.n_regular+FLAGS.n_adaptive,
-                          data_file=args.plot, sample_start=args.start)
+                          data_file=args.plot)
