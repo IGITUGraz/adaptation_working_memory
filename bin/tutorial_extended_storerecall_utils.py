@@ -285,11 +285,12 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     n_values = value_dict[0].shape[0]  # number of bit in a value (width of value word)
     input_batch = []
     target_batch = []
+    output_mask_batch = []
     for b in range(batch_size):
         # generate valid store/recall signals by probability
         storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
         values_sequence = np.array(value_dict[np.random.choice(value_dict.shape[0], length)]).swapaxes(0, 1)
-        input_sequence = np.vstack((storerecall_sequence, values_sequence))
+        input_sequence = np.vstack((storerecall_sequence, values_sequence))  # channels, length
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
             store_seq = storerecall_sequence[0]
@@ -298,11 +299,13 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
                 next_target = values_sequence[:, step]
             if recall_seq[step] == 1:
                 target_sequence[:, step] = next_target
+                input_sequence[2:, step] = 0
 
         input_batch.append(input_sequence)
         target_batch.append(target_sequence)
+        output_mask_batch.append(storerecall_sequence[1])
 
-    return np.array(input_batch), np.array(target_batch)
+    return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch)
 
 
 def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac_duration, n_neuron, f0=200 / 1000,

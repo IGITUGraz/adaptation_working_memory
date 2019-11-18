@@ -353,6 +353,7 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
 
     return data_dict
 
+
 # Define the name of spike train for the different models
 z_stack, final_state = tf.nn.dynamic_rnn(cell, input_spikes, initial_state=init_state_holder, dtype=tf.float32)
 if FLAGS.model == 'lsnn':
