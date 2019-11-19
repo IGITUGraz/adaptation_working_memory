@@ -241,9 +241,15 @@ def generate_storerecall_signals_with_prob(length, prob):
     return np.array(binary_seq)
 
 
-def random_binary_word(width):
+def random_binary_word(width, max_prob_active=None):
     """Generate random binary word of specific width"""
-    return np.random.randint(2, size=width)
+    if max_prob_active is None:
+        return np.random.randint(2, size=width)
+    else:
+        word = np.random.randint(2, size=width)
+        while sum(word) > int(width * max_prob_active):
+            word = np.random.randint(2, size=width)
+        return word
 
 
 def hamming2(s1, s2):
@@ -252,16 +258,17 @@ def hamming2(s1, s2):
     return sum(c1 != c2 for c1, c2 in zip(s1, s2))
 
 
-def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5):
+def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5, max_prob_active=0.2):
     """
     Generate dictionaries of binary words for training and testing.
     Ensures minimal hamming distance between test words and any training words.
+    Ensures sparsity in active bit by limiting the percentage of active bits in a word by max_prob_active.
     """
-    dict_train = [random_binary_word(n_values) for _ in range(train_dict_size)]
+    dict_train = [random_binary_word(n_values, max_prob_active) for _ in range(train_dict_size)]
     dict_test = []
     valid = True
     while len(dict_test) < test_dict_size:
-        test_candidate = random_binary_word(n_values)
+        test_candidate = random_binary_word(n_values, max_prob_active)
         for train_word in dict_train:
             if hamming2(train_word, test_candidate) <= min_hamming_dist:
                 valid = False
@@ -282,7 +289,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     :param value_dict: dictionary of binary words to use
     :return: mini-batch of store-recall sequences (batch_size, channels, length)
     """
-    n_values = value_dict[0].shape[0]  # number of bit in a value (width of value word)
+    # n_values = value_dict[0].shape[0]  # number of bits in a value (width of value word)
     input_batch = []
     target_batch = []
     output_mask_batch = []
@@ -306,6 +313,42 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         output_mask_batch.append(storerecall_sequence[1])
 
     return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch)
+
+
+def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
+                                       n_neuron, f0):
+    n_values = value_dict[0].shape[0]  # number of bits in a value (width of value word)
+    assert n_neuron % (n_values + 2) == 0,\
+        "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
+    input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
+        batch_size, length, prob_storerecall, value_dict)
+    input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
+    n_neuron_per_channel = n_neuron // (n_values + 2)
+    input_rates_batch = np.tile(input_rates_batch, (1, n_neuron_per_channel, n_charac_duration))
+    input_spikes_batch = generate_poisson_noise_np(input_rates_batch)
+
+    input_batch = input_batch.swapaxes(1, 2)
+    input_spikes_batch = input_spikes_batch.swapaxes(1, 2)
+    target_batch = target_batch.swapaxes(1, 2)
+    return input_spikes_batch, input_batch, target_batch, output_mask_batch
+
+
+def storerecall_error(output, target, mask):
+    """
+    Calculate the error over batch of input
+    :param z: reduced output of network (batch, time, output_values)
+    :param num_Y:
+    :param num_X:
+    :param n_character:
+    :return:
+    """
+    out_at_recall = tf.boolean_mask(output, mask)
+    target_at_recall = tf.cast(tf.boolean_mask(target, mask), dtype=tf.float32)
+    char_correct = tf.cast(tf.equal(out_at_recall, target_at_recall), tf.float32)
+    accuracy_per_bit = tf.reduce_mean(char_correct)
+    error_per_bit = 1. - accuracy_per_bit
+
+    return accuracy_per_bit, error_per_bit
 
 
 def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac_duration, n_neuron, f0=200 / 1000,
@@ -413,15 +456,15 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     # plot targets
     ax = ax_list[-1]
     mask = plot_result_values['recall_charac_mask'][batch]
-    data = plot_result_values['target_nums'][batch]
-    data[np.invert(mask)] = -1
-    lines = []
-    ind_nt = np.argwhere(data != -1)
-    for idx in ind_nt.tolist():
-        i = idx[0]
-        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='target')
-    ax.add_collection(lc_t)  # plot target segments
+    # data = plot_result_values['target_nums'][batch]
+    # data[np.invert(mask)] = -1
+    # lines = []
+    # ind_nt = np.argwhere(data != -1)
+    # for idx in ind_nt.tolist():
+    #     i = idx[0]
+    #     lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
+    # lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='target')
+    # ax.add_collection(lc_t)  # plot target segments
 
     # plot output per tau_char
     data = plot_result_values['out_plot_char_step'][batch]
@@ -445,7 +488,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     line_output2, = ax.plot(presentation_steps, output2, color='purple', label='output', alpha=0.7)
     ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
-    ax.legend(handles=[lc_t, lc_o, line_output2], loc='lower center', fontsize=7,
+    ax.legend(handles=[lc_o, line_output2], loc='lower center', fontsize=7,
               bbox_to_anchor=(0.5, -0.1), ncol=3)
 
     ax.set_xlabel('time in ms', fontsize=fs)
@@ -538,15 +581,15 @@ def update_stp_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neur
     # plot targets
     ax = ax_list[-1]
     mask = plot_result_values['recall_charac_mask'][batch]
-    data = plot_result_values['target_nums'][batch]
-    data[np.invert(mask)] = -1
-    lines = []
-    ind_nt = np.argwhere(data != -1)
-    for idx in ind_nt.tolist():
-        i = idx[0]
-        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='target')
-    ax.add_collection(lc_t)  # plot target segments
+    # data = plot_result_values['target_nums'][batch]
+    # data[np.invert(mask)] = -1
+    # lines = []
+    # ind_nt = np.argwhere(data != -1)
+    # for idx in ind_nt.tolist():
+    #     i = idx[0]
+    #     lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
+    # lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='target')
+    # ax.add_collection(lc_t)  # plot target segments
 
     # plot output per tau_char
     data = plot_result_values['out_plot_char_step'][batch]
@@ -607,7 +650,7 @@ def offline_plot(data_path, custom_plot=True):
 
 def avg_firingrates_during_delay(data_path):
     """
-    Calculate average firing rates during delays of custom plot.
+    Calculate average firing rates during delays of custom plot (for two value store-recall task).
     Data is conditioned on the current memory content
     [0 (after storing 0), 1 (after storing 1), blank (after recall)]
     Motivation: check if firing rate is higher during delay if the memory is filled.

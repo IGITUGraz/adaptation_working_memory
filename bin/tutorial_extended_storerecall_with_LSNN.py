@@ -23,7 +23,7 @@ from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_b
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
 
 from tutorial_extended_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch, \
-    update_plot, update_stp_plot
+    update_plot, update_stp_plot, generate_spiking_storerecall_batch, generate_value_dicts, storerecall_error
 
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
@@ -45,11 +45,11 @@ tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to resto
 tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
-tf.app.flags.DEFINE_integer('n_charac', 2, 'number of characters in the recall task')
-tf.app.flags.DEFINE_integer('n_in', 40, 'number of input units.')
+tf.app.flags.DEFINE_integer('n_charac', 12, 'number of characters in the recall task')
+tf.app.flags.DEFINE_integer('n_in', 112, 'number of spiking input units. Must be divisable by (n_charac+2)')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
 tf.app.flags.DEFINE_integer('n_adaptive', 60, 'number of controller units')
-tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
+tf.app.flags.DEFINE_integer('f0', 500, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 400, 'number of iterations')
@@ -62,6 +62,7 @@ tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 ##
+tf.app.flags.DEFINE_float('max_in_bit_prob', 0.5, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('stop_crit', 0.0, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 1, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay')
@@ -101,11 +102,12 @@ if FLAGS.reproduce == 'debug':
     FLAGS.thr = 0.01
     FLAGS.n_regular = 60
     FLAGS.n_adaptive = 0
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.n_in = 40
+    FLAGS.seq_len = 10
+    FLAGS.seq_delay = 4
     FLAGS.n_iter = 400
-    FLAGS.batch_train = 4
+    FLAGS.do_plot = True
+    FLAGS.monitor_plot = True
+    FLAGS.interactive_plot = True
 
 if FLAGS.reproduce == '560_LIF':
     print("Using the hyperparameters as in 560 paper: pure ELIF network")
@@ -231,8 +233,8 @@ def custom_seqence():
 
 if FLAGS.comment == '':
     FLAGS.comment = FLAGS.reproduce
-# custom_plot = None
-custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+custom_plot = None
+# custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
 
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
@@ -262,12 +264,8 @@ decay = np.exp(-dt / FLAGS.tau_out)  # output layer psp decay, chose value betwe
 # Symbol number
 n_charac = FLAGS.n_charac  # Number of digit symbols
 n_input_symbols = n_charac + 2  # Total number of symbols including recall and store
-n_output_symbols = n_charac  # Number of output symbols
 recall_symbol = n_input_symbols - 1  # ID of the recall symbol
 store_symbol = n_input_symbols - 2  # ID of the store symbol
-
-# Neuron population sizes
-input_neuron_split = np.array_split(np.arange(FLAGS.n_in), n_input_symbols)
 
 # Sign of the neurons
 if 0 < FLAGS.rewiring_connectivity and FLAGS.neuron_sign:
@@ -320,35 +318,48 @@ print('FILE REFERENCE: ' + file_reference)
 # Generate input
 input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in),
                               name='InputSpikes')  # MAIN input spike placeholder
-input_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
-                            name='InputNums')  # Lists of input character for the recall task
-target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
-                             name='TargetNums')  # Lists of target characters of the recall task
-recall_mask = tf.placeholder(dtype=tf.bool, shape=(None, None),
-                             name='RecallMask')  # Binary tensor that points to the time of presentation of a recall
+# input_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
+#                             name='InputNums')  # Lists of input character for the recall task
+# target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
+#                              name='TargetNums')  # Lists of target characters of the recall task
+# Binary tensor that points to the time of presentation of a recall
+# recall_mask = tf.placeholder(dtype=tf.bool, shape=(None, None), name='RecallMask')
+recall_charac_mask = tf.placeholder(dtype=tf.bool, shape=(None, None), name='RecallMask')
 
 # Other placeholder that are useful for computing accuracy and debuggin
-target_sequence = tf.placeholder(dtype=tf.int64, shape=(None, None),
+target_sequence = tf.placeholder(dtype=tf.int64, shape=(None, None, FLAGS.n_charac),
                                  name='TargetSequence')  # The target characters with time expansion
 batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that contains the batch size
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
-recall_charac_mask = tf.equal(input_nums, recall_symbol, name='RecallCharacMask')
+# recall_charac_mask = tf.equal(input_nums, recall_symbol, name='RecallCharacMask')
+
+train_value_dict, test_value_dict = generate_value_dicts(n_values=FLAGS.n_charac, train_dict_size=5, test_dict_size=5,
+                                                         max_prob_active=FLAGS.max_in_bit_prob)
 
 
-def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None):
+def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None, test=False):
     p_sr = 1/(1 + FLAGS.seq_delay)
-    spk_data, is_recall_data, target_seq_data, memory_seq_data, in_data, target_data = generate_storerecall_data(
-        batch_size=batch_size,
-        f0=input_f0,
-        sentence_length=seq_len,
-        n_character=FLAGS.n_charac,
+    # spk_data, is_recall_data, target_seq_data, memory_seq_data, in_data, target_data = generate_storerecall_data(
+    #     batch_size=batch_size,
+    #     f0=input_f0,
+    #     sentence_length=seq_len,
+    #     n_character=FLAGS.n_charac,
+    #     n_charac_duration=FLAGS.tau_char,
+    #     n_neuron=FLAGS.n_in,
+    #     prob_signals=p_sr,
+    #     with_prob=True,
+    #     override_input=override_input,
+    # )
+    spk_data, input_data, target_seq_data, is_recall_data = generate_spiking_storerecall_batch(
+        batch_size=batch_size, length=seq_len, prob_storerecall=p_sr,
+        value_dict=test_value_dict if test else train_value_dict,
         n_charac_duration=FLAGS.tau_char,
         n_neuron=FLAGS.n_in,
-        prob_signals=p_sr,
-        with_prob=True,
-        override_input=override_input,
+        f0=FLAGS.f0 / 1000,  # convert frequency in Hz to kHz or probability of firing every dt=1ms step
     )
-    data_dict = {input_spikes: spk_data, input_nums: in_data, target_nums: target_data, recall_mask: is_recall_data,
+    # data_dict = {input_spikes: spk_data, input_nums: in_data, target_nums: target_data,
+    data_dict = {input_spikes: spk_data,
+                 recall_charac_mask: is_recall_data,
                  target_sequence: target_seq_data, batch_size_holder: batch_size}
 
     return data_dict
@@ -364,8 +375,9 @@ z_con = []
 z_all = z
 
 with tf.name_scope('RecallLoss'):
-    target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
-    Y = tf.one_hot(target_nums_at_recall, depth=n_output_symbols, name='Target')
+    # target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
+    # Y = tf.one_hot(target_nums_at_recall, depth=FLAGS.n_charac, name='Target')
+    Y = tf.boolean_mask(target_sequence, recall_charac_mask, name='Target')
 
     # MTP models do not use controller (modulator) population for output
     out_neurons = z_all
@@ -373,25 +385,26 @@ with tf.name_scope('RecallLoss'):
     psp = exp_convolve(out_neurons, decay=decay)
 
     if 0 < FLAGS.rewiring_connectivity and 0 < FLAGS.readout_rewiring_connectivity:
-        w_out, w_out_sign, w_out_var, _ = weight_sampler(FLAGS.n_regular + FLAGS.n_adaptive, n_output_symbols,
+        w_out, w_out_sign, w_out_var, _ = weight_sampler(FLAGS.n_regular + FLAGS.n_adaptive, FLAGS.n_charac,
                                                          FLAGS.readout_rewiring_connectivity,
                                                          neuron_sign=rec_neuron_sign)
     else:
-        w_out = tf.get_variable(name='out_weight', shape=[n_neurons, n_output_symbols])
+        w_out = tf.get_variable(name='out_weight', shape=[n_neurons, FLAGS.n_charac])
 
     out = einsum_bij_jk_to_bik(psp, w_out)
     out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
     Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
 
     # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
-    loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_nums_at_recall,
-                                                                                logits=Y_predict))
+    # loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=Y,
+    loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
 
     with tf.name_scope('PlotNodes'):
         out_plot = tf.nn.softmax(out)
         out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
-    _, recall_errors, false_sentence_id_list = error_rate(out_char_step, target_nums, input_nums, n_charac)
+    # _, recall_errors, false_sentence_id_list = error_rate(out_char_step, target_nums, input_nums, n_charac)
+    _, recall_errors = storerecall_error(out_char_step, target_sequence, recall_charac_mask)
 
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
@@ -491,8 +504,8 @@ plot_result_tensors = {
     'input_spikes': input_spikes,
     'z': z,
     'z_con': z_con,
-    'input_nums': input_nums,
-    'target_nums': target_nums,
+    # 'input_nums': input_nums,
+    # 'target_nums': target_nums,
     'out_plot_char_step': out_plot_char_step,
     'psp': psp,
     'out_plot': out_plot,
@@ -506,6 +519,7 @@ else:
     plot_result_tensors['stp_u'] = stp_u
     plot_result_tensors['stp_x'] = stp_x
 
+train_errors = [1.]
 t_train = 0
 t_ref = time()
 for k_iter in range(FLAGS.n_iter):
@@ -517,7 +531,7 @@ for k_iter in range(FLAGS.n_iter):
 
     # Monitor the training with a validation set
     t0 = time()
-    val_dict = get_data_dict(FLAGS.batch_val)
+    val_dict = get_data_dict(FLAGS.batch_val, test=True)
     feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
 
     results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
@@ -535,8 +549,8 @@ for k_iter in range(FLAGS.n_iter):
 
     if np.mod(k_iter, print_every) == 0:
 
-        print('''Iteration {}, statistics on the validation set average error {:.2g} +- {:.2g} (trial averaged)'''
-              .format(k_iter, np.mean(validation_error_list[-print_every:]),
+        print('''Iteration {}, statistics on the train set {:.2g} and test set average error {:.2g} +- {:.2g} (trial averaged)'''
+              .format(k_iter, np.mean(train_errors[-print_every:]), np.mean(validation_error_list[-print_every:]),
                       np.std(validation_error_list[-print_every:])))
 
         def get_stats(v):
@@ -629,10 +643,12 @@ for k_iter in range(FLAGS.n_iter):
     train_dict = get_data_dict(FLAGS.batch_train)
     feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
     t0 = time()
-    final_state_value, _, _ = sess.run([final_state, train_step, update_regularization_coeff], feed_dict=train_dict)
+    final_state_value, _, _, train_error = sess.run(
+        [final_state, train_step, update_regularization_coeff, recall_errors], feed_dict=train_dict)
     if FLAGS.preserve_state:
         last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
+    train_errors.append(train_error)
 
 print('FINISHED IN {:.2g} s'.format(time() - t_ref))
 
@@ -693,8 +709,8 @@ if FLAGS.save_data:
         feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
             cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
 
-        results_values, plot_results_values, in_spk, spk, spk_con, target_nums_np, z_sum_np = sess.run(
-            [results_tensors, plot_result_tensors, input_spikes, z, z_con, target_nums, out_plot_char_step],
+        results_values, plot_results_values, in_spk, spk, spk_con, z_sum_np = sess.run(
+            [results_tensors, plot_result_tensors, input_spikes, z, z_con, out_plot_char_step],
             feed_dict=test_dict)
         # if FLAGS.preserve_state:
         #   last_final_state_state_testing_pointer[0] = results_values['final_state']
