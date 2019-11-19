@@ -267,17 +267,20 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
     dict_train = [random_binary_word(n_values, max_prob_active) for _ in range(train_dict_size)]
     dict_test = []
     valid = True
-    while len(dict_test) < test_dict_size:
-        test_candidate = random_binary_word(n_values, max_prob_active)
-        for train_word in dict_train:
-            if hamming2(train_word, test_candidate) <= min_hamming_dist:
-                valid = False
-                break
-        if valid:
-            dict_test.append(test_candidate)
-        else:
-            valid = True
-    return np.array(dict_train), np.array(dict_test)
+    if min_hamming_dist is not None:
+        while len(dict_test) < test_dict_size:
+            test_candidate = random_binary_word(n_values, max_prob_active)
+            for train_word in dict_train:
+                if hamming2(train_word, test_candidate) <= min_hamming_dist:
+                    valid = False
+                    break
+            if valid:
+                dict_test.append(test_candidate)
+            else:
+                valid = True
+        return np.array(dict_train), np.array(dict_test)
+    else:
+        return np.array(dict_train), np.array(dict_train)
 
 
 def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict):
@@ -324,13 +327,36 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
         batch_size, length, prob_storerecall, value_dict)
     input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
     n_neuron_per_channel = n_neuron // (n_values + 2)
-    input_rates_batch = np.tile(input_rates_batch, (1, n_neuron_per_channel, n_charac_duration))
+    input_rates_batch = np.repeat(input_rates_batch, n_neuron_per_channel, axis=1)
+    input_rates_batch = np.repeat(input_rates_batch, n_charac_duration, axis=2)
     input_spikes_batch = generate_poisson_noise_np(input_rates_batch)
-
+    # convert data to be of shape (batch, time[, channels])
     input_batch = input_batch.swapaxes(1, 2)
     input_spikes_batch = input_spikes_batch.swapaxes(1, 2)
     target_batch = target_batch.swapaxes(1, 2)
     return input_spikes_batch, input_batch, target_batch, output_mask_batch
+
+
+def debug_plot_spiking_input_generation():
+    import matplotlib.pyplot as plt
+    n_values = 12
+    train_value_dict, test_value_dict = generate_value_dicts(n_values=n_values, train_dict_size=5,
+                                                             test_dict_size=5,
+                                                             max_prob_active=0.5)
+    n_neuron = 112
+    input_spikes_batch, input_batch, target_batch, output_mask_batch = \
+        generate_spiking_storerecall_batch(
+            batch_size=16, length=10, prob_storerecall=0.2, value_dict=train_value_dict,
+            n_charac_duration=200, n_neuron=n_neuron, f0=500. / 1000.)
+    batch=0
+    print(input_batch[batch].swapaxes(0, 1))
+
+    n_neuron_per_channel = n_neuron // (n_values + 2)  # 8
+    sr_spikes = input_spikes_batch[batch, :, :2 * n_neuron_per_channel]
+    fig, ax = plt.subplots(figsize=(8, 4), gridspec_kw={'wspace': 0, 'hspace': 0.2})
+    raster_plot(ax, sr_spikes)
+    plt.draw()
+    plt.pause(1)
 
 
 def storerecall_error(output, target, mask):
@@ -396,23 +422,39 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
         ax.clear()
         strip_right_top_axis(ax)
 
+    top_margin = 0.08
+    left_margin = -0.085
+
+    # PLOT STORE-RECALL SIGNAL SPIKES
+    ax = ax_list[0]
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac + 2)
+    sr_spikes = plot_result_values['input_spikes'][batch, :, :2*n_neuron_per_channel]
+    raster_plot(ax, sr_spikes, linewidth=0.15)
+    ax.set_yticklabels([])
+    ax.text(left_margin, 0.8 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+    ax.text(left_margin, 0.4 - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+    ax.set_xticks([])
+
     # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
     z = plot_result_values['z']
     raster_data = \
-        zip(range(3), [plot_result_values['input_spikes'], z, z], ['input X', 'R', 'A']) if FLAGS.n_regular > 0 else \
-        zip(range(2), [plot_result_values['input_spikes'], z], ['input X', 'A'])
+        zip(range(3), [plot_result_values['input_spikes'], z, z], ['input', 'LIF', 'ALIF']) if FLAGS.n_regular > 0 else \
+        zip(range(2), [plot_result_values['input_spikes'], z], ['input', 'ALIF'])
 
     for k_data, data, d_name in raster_data:
-        ax = ax_list[k_data]
+        ax = ax_list[k_data+1]
         # ax.grid(color='black', alpha=0.15, linewidth=0.4)
         hide_bottom_axis(ax)
 
         if np.size(data) > 0:
             data = data[batch]
-            if d_name is 'R':
+            if d_name is 'LIF':
                 data = data[:, :FLAGS.n_regular]
-            elif d_name is 'A':
+            elif d_name is 'ALIF':
                 data = data[:, FLAGS.n_regular:]
+            elif d_name is 'input':
+                data = data[:, 2*n_neuron_per_channel:]
+
             n_max = min(data.shape[1], n_max_neuron_per_raster)
             cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
             data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
@@ -420,25 +462,6 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
             ax.set_ylabel(d_name, fontsize=fs)
             ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
             ax.set_yticklabels(['1', str(data.shape[-1])])
-
-            if k_data == 0:
-                ax.set_yticklabels([])
-                n_channel = data.shape[1] // (FLAGS.n_charac + 2)  # divide #in_neurons with #in_channels
-                ax.add_patch(  # Value 0 row
-                    patches.Rectangle((0, 0), data.shape[0], n_channel, facecolor="red", alpha=0.15))
-                ax.add_patch(  # Value 1 row
-                    patches.Rectangle((0, n_channel), data.shape[0], n_channel, facecolor="blue", alpha=0.15))
-                ax.add_patch(  # Store row
-                    patches.Rectangle((0, 2 * n_channel), data.shape[0], n_channel, facecolor="yellow", alpha=0.15))
-                ax.add_patch(  # Recall row
-                    patches.Rectangle((0, 3 * n_channel), data.shape[0], n_channel, facecolor="green", alpha=0.15))
-
-                top_margin = 0.08
-                left_margin = -0.085
-                ax.text(left_margin, 1. - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.75 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.5 - top_margin, 'value 1', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.25 - top_margin, 'value 0', transform=ax.transAxes, fontsize=7, verticalalignment='top')
 
     ax = ax_list[-2]
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
@@ -467,29 +490,29 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     # ax.add_collection(lc_t)  # plot target segments
 
     # plot output per tau_char
-    data = plot_result_values['out_plot_char_step'][batch]
-    data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
-    data[np.invert(mask)] = -1
-    lines = []
-    ind_nt = np.argwhere(data != -1)
-    for idx in ind_nt.tolist():
-        i = idx[0]
-        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='avg. output')
-    ax.add_collection(lc_o)  # plot target segments
+    # data = plot_result_values['out_plot_char_step'][batch]
+    # data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
+    # data[np.invert(mask)] = -1
+    # lines = []
+    # ind_nt = np.argwhere(data != -1)
+    # for idx in ind_nt.tolist():
+    #     i = idx[0]
+    #     lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
+    # lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='avg. output')
+    # ax.add_collection(lc_o)  # plot target segments
 
     # plot softmax of psp-s per dt for more intuitive monitoring
     # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch, :, 1]
+    output2 = plot_result_values['out_plot'][batch, :, :]
     presentation_steps = np.arange(output2.shape[0])
     ax.set_yticks([0, 0.5, 1])
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('output Y', fontsize=fs)
+    ax.set_ylabel('output', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='output', alpha=0.7)
+    ax.plot(output2, label='output', alpha=0.7)
     ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
-    ax.legend(handles=[lc_o, line_output2], loc='lower center', fontsize=7,
-              bbox_to_anchor=(0.5, -0.1), ncol=3)
+    # ax.legend(handles=[line_output2], loc='lower center', fontsize=7,
+    #           bbox_to_anchor=(0.5, -0.1), ncol=3)
 
     ax.set_xlabel('time in ms', fontsize=fs)
     # To plot with interactive python one need to wait one second to the time to draw the axis

@@ -47,9 +47,12 @@ tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set
 tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 12, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 112, 'number of spiking input units. Must be divisable by (n_charac+2)')
+tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
+tf.app.flags.DEFINE_integer('train_dict_size', 5, '')
+tf.app.flags.DEFINE_integer('test_dict_size', 5, '')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
 tf.app.flags.DEFINE_integer('n_adaptive', 60, 'number of controller units')
-tf.app.flags.DEFINE_integer('f0', 500, 'input firing rate')
+tf.app.flags.DEFINE_integer('f0', 200, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 400, 'number of iterations')
@@ -98,13 +101,19 @@ tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between
 
 if FLAGS.reproduce == 'debug':
     FLAGS.model = 'lsnn'
-    FLAGS.beta = 0.0
+    FLAGS.beta = 1
     FLAGS.thr = 0.01
-    FLAGS.n_regular = 60
-    FLAGS.n_adaptive = 0
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
     FLAGS.seq_len = 10
     FLAGS.seq_delay = 4
     FLAGS.n_iter = 400
+
+    FLAGS.min_hamming_dist = None
+    FLAGS.n_charac = 2
+    FLAGS.train_dict_size = 2
+    FLAGS.test_dict_size = 2
+    FLAGS.n_in = 40
     FLAGS.do_plot = True
     FLAGS.monitor_plot = True
     FLAGS.interactive_plot = True
@@ -333,8 +342,11 @@ batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
 # recall_charac_mask = tf.equal(input_nums, recall_symbol, name='RecallCharacMask')
 
-train_value_dict, test_value_dict = generate_value_dicts(n_values=FLAGS.n_charac, train_dict_size=5, test_dict_size=5,
-                                                         max_prob_active=FLAGS.max_in_bit_prob)
+train_value_dict, test_value_dict = generate_value_dicts(
+    n_values=FLAGS.n_charac,
+    train_dict_size=FLAGS.train_dict_size, test_dict_size=FLAGS.test_dict_size,
+    max_prob_active=FLAGS.max_in_bit_prob,
+    min_hamming_dist=FLAGS.min_hamming_dist)
 
 
 def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None, test=False):
@@ -472,7 +484,7 @@ if FLAGS.do_plot:
     # Open an interactive matplotlib window to plot in real time
     if FLAGS.interactive_plot:
         plt.ion()
-    fig, ax_list = plt.subplots(nrows=5, figsize=(6, 7.5), gridspec_kw={'wspace': 0, 'hspace': 0.2})
+    fig, ax_list = plt.subplots(nrows=6, figsize=(8, 9), gridspec_kw={'wspace': 0, 'hspace': 0.2})
     # re-name the window with the name of the cluster to track relate to the terminal window
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
 
