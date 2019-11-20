@@ -238,7 +238,7 @@ def generate_storerecall_signals_with_prob(length, prob):
         is_valid = validity_test(seq, recall_char, store_char)
 
     binary_seq = [(seq == store_char) * 1, (seq == recall_char) * 1]  # * 1 for conversion from boolean to int
-    return np.array(binary_seq)
+    return np.array(binary_seq)  # (store/recall, length)
 
 
 def random_binary_word(width, max_prob_active=None):
@@ -255,7 +255,8 @@ def random_binary_word(width, max_prob_active=None):
 def hamming2(s1, s2):
     """Calculate the Hamming distance between two bit strings"""
     assert len(s1) == len(s2)
-    return sum(c1 != c2 for c1, c2 in zip(s1, s2))
+    # return sum(c1 != c2 for c1, c2 in zip(s1, s2))  # Wikipedia solution
+    return np.count_nonzero(s1 != s2)  # a faster solution
 
 
 def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5, max_prob_active=0.2):
@@ -264,7 +265,15 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
     Ensures minimal hamming distance between test words and any training words.
     Ensures sparsity in active bit by limiting the percentage of active bits in a word by max_prob_active.
     """
-    dict_train = [random_binary_word(n_values, max_prob_active) for _ in range(train_dict_size)]
+    # Generate dictionary of unique binary words for training set
+    dict_train = []
+    while len(dict_train) < train_dict_size:
+        train_candidate = random_binary_word(n_values, max_prob_active)
+        if not any([(train_candidate == w).all() for w in dict_train]):
+            dict_train.append(train_candidate)
+    assert len(dict_train) == train_dict_size
+
+    # Generate dictionary of unique binary words for test set with minimal hamming distance to words in train set
     dict_test = []
     valid = True
     if min_hamming_dist is not None:
@@ -278,6 +287,7 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
                 dict_test.append(test_candidate)
             else:
                 valid = True
+        assert len(dict_test) == test_dict_size
         return np.array(dict_train), np.array(dict_test)
     else:
         return np.array(dict_train), np.array(dict_train)
@@ -296,10 +306,19 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     input_batch = []
     target_batch = []
     output_mask_batch = []
+    words_idxs = [i for i in range(value_dict.shape[0])]
+    # words_batch_stats = {i: 0 for i in range(value_dict.shape[0])}
     for b in range(batch_size):
         # generate valid store/recall signals by probability
         storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
         word_sequence_choice = np.random.choice(value_dict.shape[0], length)
+
+        # ensure that the stored words are balanced in the batch (similar number of each word stored)
+        store_idx = np.nonzero(storerecall_sequence[0])[0]  # we balance only the first stored word
+        word_sequence_choice[store_idx] = words_idxs[b % len(words_idxs)]  # different word for every consecutive batch
+        # word_idx_at_first_store = word_sequence_choice[store_idx][0]
+        # words_batch_stats[word_idx_at_first_store] += 1
+
         values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
         # if b == 0:
         #     print(word_sequence_choice)
@@ -319,7 +338,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         input_batch.append(input_sequence)
         target_batch.append(target_sequence)
         output_mask_batch.append(storerecall_sequence[1])
-
+    # print("batch stats (instances of words stored)", words_batch_stats)
     return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch)
 
 

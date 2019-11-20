@@ -96,8 +96,8 @@ tf.app.flags.DEFINE_bool('interactive_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
-tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
-tf.app.flags.DEFINE_bool('preserve_state', False, 'preserve network state between training trials')
+tf.app.flags.DEFINE_bool('adaptive_reg', False, 'Regularization coefficient incread when avg fr > reg_max_rate')
+tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
 
 if FLAGS.reproduce == 'debug':
     FLAGS.model = 'lsnn'
@@ -105,17 +105,22 @@ if FLAGS.reproduce == 'debug':
     FLAGS.thr = 0.01
     FLAGS.seq_len = 10
     FLAGS.seq_delay = 4
-    FLAGS.n_iter = 800
+    FLAGS.n_iter = 600
     FLAGS.tau_a = 2000
+    # FLAGS.preserve_state = False
+    FLAGS.f0 = 500
+    FLAGS.reg = 0.01
+    FLAGS.lr_decay = 0.8
 
+    FLAGS.tau_char = 100
     FLAGS.n_regular = 100
     FLAGS.n_adaptive = 100
 
-    FLAGS.min_hamming_dist = 2
-    FLAGS.n_charac = 10
-    FLAGS.train_dict_size = 4
-    FLAGS.test_dict_size = 4
-    FLAGS.n_in = (FLAGS.n_charac + 2) * 6
+    FLAGS.min_hamming_dist = 3
+    FLAGS.n_charac = 20
+    FLAGS.train_dict_size = 10
+    FLAGS.test_dict_size = 10
+    FLAGS.n_in = (FLAGS.n_charac + 2) * 10
     # FLAGS.do_plot = True
     # FLAGS.monitor_plot = True
     # FLAGS.interactive_plot = True
@@ -326,29 +331,24 @@ file_reference = '{}_{}_seqlen{}_seqdelay{}_in{}_R{}_A{}_lr{}_tauchar{}_comment{
     FLAGS.learning_rate, FLAGS.tau_char, FLAGS.comment)
 print('FILE REFERENCE: ' + file_reference)
 
-# Generate input
-input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in),
-                              name='InputSpikes')  # MAIN input spike placeholder
-# input_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
-#                             name='InputNums')  # Lists of input character for the recall task
-# target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
-#                              name='TargetNums')  # Lists of target characters of the recall task
-# Binary tensor that points to the time of presentation of a recall
-# recall_mask = tf.placeholder(dtype=tf.bool, shape=(None, None), name='RecallMask')
-recall_charac_mask = tf.placeholder(dtype=tf.bool, shape=(None, None), name='RecallMask')
+# Saving setup
+full_path = os.path.join(result_folder, file_reference)
+if not os.path.exists(full_path):
+    os.makedirs(full_path)
 
-# Other placeholder that are useful for computing accuracy and debuggin
-target_sequence = tf.placeholder(dtype=tf.int64, shape=(None, None, FLAGS.n_charac),
-                                 name='TargetSequence')  # The target characters with time expansion
+input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in), name='InputSpikes')
+recall_charac_mask = tf.placeholder(dtype=tf.bool, shape=(None, None), name='RecallMask')
+target_sequence = tf.placeholder(dtype=tf.int64, shape=(None, None, FLAGS.n_charac), name='TargetSequence')
 batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that contains the batch size
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
-# recall_charac_mask = tf.equal(input_nums, recall_symbol, name='RecallCharacMask')
 
 train_value_dict, test_value_dict = generate_value_dicts(
     n_values=FLAGS.n_charac,
     train_dict_size=FLAGS.train_dict_size, test_dict_size=FLAGS.test_dict_size,
     max_prob_active=FLAGS.max_in_bit_prob,
     min_hamming_dist=FLAGS.min_hamming_dist)
+save_file({"train_value_dict": train_value_dict, "test_value_dict": test_value_dict},
+          full_path, 'value_dicts', file_type='json')
 
 
 def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None, test=False):
@@ -417,10 +417,9 @@ with tf.name_scope('RecallLoss'):
     loss_recall = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=Y_predict))
 
     with tf.name_scope('PlotNodes'):
-        out_plot = tf.nn.softmax(out)
+        out_plot = tf.nn.sigmoid(out)
         out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
-    # _, recall_errors, false_sentence_id_list = error_rate(out_char_step, target_nums, input_nums, n_charac)
     _, recall_errors = storerecall_error(Y_predict, Y)
 
 # Target regularization
@@ -672,11 +671,6 @@ print('FINISHED IN {:.2g} s'.format(time() - t_ref))
 # Save everything
 if FLAGS.save_data:
 
-    # Saving setup
-    full_path = os.path.join(result_folder, file_reference)
-    if not os.path.exists(full_path):
-        os.makedirs(full_path)
-
     # Save the tensorflow graph
     saver.save(sess, os.path.join(full_path, 'model'))
     saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
@@ -726,8 +720,8 @@ if FLAGS.save_data:
         feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
             cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
 
-        results_values, plot_results_values, in_spk, spk, spk_con, z_sum_np = sess.run(
-            [results_tensors, plot_result_tensors, input_spikes, z, z_con, out_plot_char_step],
+        results_values, plot_results_values, in_spk, spk, spk_con = sess.run(
+            [results_tensors, plot_result_tensors, input_spikes, z, z_con],
             feed_dict=test_dict)
         # if FLAGS.preserve_state:
         #   last_final_state_state_testing_pointer[0] = results_values['final_state']
