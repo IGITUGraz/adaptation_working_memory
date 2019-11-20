@@ -216,7 +216,8 @@ class LIF(Cell):
             if 0 < rewiring_connectivity < 1:
                 self.w_in_val, self.w_in_sign, self.w_in_var, _ = weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign, w_scale=self.V0)
             else:
-                self.w_in_var = tf.Variable(rd.randn(n_in, n_rec) / np.sqrt(n_in) * self.V0, dtype=dtype, name="InputWeight")
+                self.w_in_init = rd.randn(n_in, n_rec) / np.sqrt(n_in)
+                self.w_in_var = tf.Variable(self.w_in_init * self.V0, dtype=dtype, name="InputWeight")
                 self.w_in_val = self.w_in_var
 
             self.w_in_delay = tf.Variable(rd.randint(self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec),dtype=tf.int32,name="InDelays",trainable=False)

@@ -64,6 +64,7 @@ tf.app.flags.DEFINE_integer('tau_char', 200, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
+tf.app.flags.DEFINE_integer('n_per_channel', 10, 'input spiking neurons per input channel')
 ##
 tf.app.flags.DEFINE_float('max_in_bit_prob', 0.5, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('stop_crit', 0.0, 'Stopping criterion. Stops training if error goes below this value')
@@ -110,6 +111,7 @@ if FLAGS.reproduce == 'debug':
     # FLAGS.preserve_state = False
     FLAGS.f0 = 500
     FLAGS.lr_decay = 0.8
+    FLAGS.reg = 0.1
 
     FLAGS.tau_char = 100
     FLAGS.n_regular = 100
@@ -119,7 +121,7 @@ if FLAGS.reproduce == 'debug':
     FLAGS.n_charac = 20
     FLAGS.train_dict_size = 10
     FLAGS.test_dict_size = 10
-    FLAGS.n_in = (FLAGS.n_charac + 2) * 10
+    FLAGS.n_in = (FLAGS.n_charac + 2) * FLAGS.n_per_channel
     # FLAGS.do_plot = True
     # FLAGS.monitor_plot = True
     # FLAGS.interactive_plot = True
@@ -322,6 +324,13 @@ else:
         tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
     )
 
+# balance the input weights of store-recall signals with the rest of the bits
+sr_win_coeff = FLAGS.n_charac
+increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*2, :],
+                                cell.w_in_init[:FLAGS.n_per_channel*2, :] * sr_win_coeff)
+
+# cell.w_in_var[::, :] = cell.w_in_var[::, :] * sr_win_coeff
+# my_var = my_var[4:8].assign(tf.zeros(4))
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
 time_stamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -407,7 +416,8 @@ with tf.name_scope('RecallLoss'):
     b_out = tf.get_variable(name='out_bias', shape=[FLAGS.n_charac])
 
     out = einsum_bij_jk_to_bik(psp, w_out) + b_out
-    out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
+    # out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
+    out_char_step = out[:, ::FLAGS.tau_char]  # take last ms of every word step
     Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
 
     # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
@@ -470,6 +480,11 @@ sess = tf.Session(config=config)
 
 sess.run(tf.global_variables_initializer())
 
+sess.run(increase_sr_weights)
+w_in_init = sess.run(cell.w_in_var)
+w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac + 2), FLAGS.n_per_channel, w_in_init.shape[1]))
+w_in_init_avg = np.mean(np.abs(w_in_init_avg), axis=(1, 2))
+print(w_in_init_avg)
 
 if len(FLAGS.checkpoint) > 0:
     saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
