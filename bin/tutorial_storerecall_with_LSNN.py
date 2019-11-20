@@ -138,6 +138,19 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.n_in = 40
     FLAGS.n_iter = 400
 
+if FLAGS.reproduce == '560_LSNN':
+    print("Using the hyperparameters as in 560 paper: pure ALIF network")
+    FLAGS.model = 'lsnn'
+    FLAGS.beta = 1
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 120
+    FLAGS.n_adaptive = 120
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.tau_a = 2000
+    FLAGS.n_in = 40
+    FLAGS.n_iter = 400
+
 if FLAGS.reproduce == '560_table':
     print("Using the hyperparameters as in 560 paper: ALIF table")
     FLAGS.model = 'lsnn'
