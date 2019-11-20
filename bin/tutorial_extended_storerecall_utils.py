@@ -293,6 +293,18 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
         return np.array(dict_train), np.array(dict_train)
 
 
+def randn_except(limit, not_num):
+    candidate = np.random.randint(limit)
+    return candidate if candidate != not_num else randn_except(limit, not_num)
+
+
+def remove_consecutive_same_numbers(sequence, max_num):
+    for i in range(len(sequence)-1):
+        if sequence[i] == sequence[i+1]:
+            sequence[i+1] = randn_except(max_num, sequence[i])
+    return sequence
+
+
 def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict):
     """
     Given the value dictionary generate a batch of store-recall sequences with specified probability of store/recall
@@ -313,6 +325,9 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         # generate valid store/recall signals by probability
         storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
         word_sequence_choice = np.random.choice(value_dict.shape[0], length)
+
+        # optionally we make sure there are no same consecutive words
+        word_sequence_choice = remove_consecutive_same_numbers(word_sequence_choice, value_dict.shape[0])
 
         # ensure that the stored words are balanced in the batch (similar number of each word stored)
         store_idxs = np.nonzero(storerecall_sequence[0])  # store step idxs
@@ -442,8 +457,8 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     It plots the data for a fixed sequence that should be representative of the expected computation
     :return:
     """
-    subsample_input = 3
-    subsample_rnn = 3
+    subsample_input = 5
+    subsample_rnn = 2
     ylabel_x = -0.11
     ylabel_y = 0.5
     fs = 10
