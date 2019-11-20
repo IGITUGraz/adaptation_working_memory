@@ -99,6 +99,7 @@ tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, 'Regularization coefficient incread when avg fr > reg_max_rate')
 tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
+tf.app.flags.DEFINE_bool('ramping_learning_rate', True, 'ramp up learning rate in first 100 steps')
 
 if FLAGS.reproduce == 'debug':
     FLAGS.model = 'lsnn'
@@ -549,10 +550,20 @@ else:
     plot_result_tensors['stp_u'] = stp_u
     plot_result_tensors['stp_x'] = stp_x
 
+
+ramping_iterations = 100
+ramping_learning_rate_values = tf.linspace(0.001, 1., num=ramping_iterations)
+clipped_global_step = tf.minimum(global_step, ramping_iterations - 1)
+ramping_learning_rate_op = tf.assign(learning_rate,
+                                     FLAGS.learning_rate * ramping_learning_rate_values[clipped_global_step])
+
 train_errors = [1.]
 t_train = 0
 t_ref = time()
 for k_iter in range(FLAGS.n_iter):
+
+    if k_iter < ramping_iterations and FLAGS.ramping_learning_rate:
+        new_lr = sess.run(ramping_learning_rate_op)
 
     if k_iter > 0 and np.mod(k_iter, FLAGS.lr_decay_every) == 0:
         old_lr = sess.run(learning_rate)
