@@ -299,7 +299,12 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     for b in range(batch_size):
         # generate valid store/recall signals by probability
         storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
-        values_sequence = np.array(value_dict[np.random.choice(value_dict.shape[0], length)]).swapaxes(0, 1)
+        word_sequence_choice = np.random.choice(value_dict.shape[0], length)
+        values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
+        # if b == 0:
+        #     print(word_sequence_choice)
+        #     print("actual words in sequence")
+        #     print(values_sequence)
         input_sequence = np.vstack((storerecall_sequence, values_sequence))  # channels, length
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
@@ -359,18 +364,15 @@ def debug_plot_spiking_input_generation():
     plt.pause(1)
 
 
-def storerecall_error(output, target, mask):
+def storerecall_error(output, target):
     """
     Calculate the error over batch of input
-    :param z: reduced output of network (batch, time, output_values)
-    :param num_Y:
-    :param num_X:
-    :param n_character:
     :return:
     """
-    out_at_recall = tf.boolean_mask(output, mask)
-    target_at_recall = tf.cast(tf.boolean_mask(target, mask), dtype=tf.float32)
-    char_correct = tf.cast(tf.equal(out_at_recall, target_at_recall), tf.float32)
+    output = tf.where(output < 0.5, tf.zeros_like(output), tf.ones_like(output))
+    output = tf.cast(output, dtype=tf.float32)
+    # output = tf.Print(output, [output[0], target[0]], message="output, target", summarize=999)
+    char_correct = tf.cast(tf.equal(output, target), tf.float32)
     accuracy_per_bit = tf.reduce_mean(char_correct)
     error_per_bit = 1. - accuracy_per_bit
 
@@ -411,6 +413,8 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     It plots the data for a fixed sequence that should be representative of the expected computation
     :return:
     """
+    subsample_input = 3
+    subsample_rnn = 3
     ylabel_x = -0.11
     ylabel_y = 0.5
     fs = 10
@@ -429,10 +433,10 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     ax = ax_list[0]
     n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac + 2)
     sr_spikes = plot_result_values['input_spikes'][batch, :, :2*n_neuron_per_channel]
-    raster_plot(ax, sr_spikes, linewidth=0.15)
+    raster_plot(ax, sr_spikes[:, ::subsample_input], linewidth=0.15)
     ax.set_yticklabels([])
-    ax.text(left_margin, 0.8 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-    ax.text(left_margin, 0.4 - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+    ax.text(left_margin, 0.8 - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+    ax.text(left_margin, 0.4 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
     ax.set_xticks([])
 
     # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
@@ -449,11 +453,11 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
         if np.size(data) > 0:
             data = data[batch]
             if d_name is 'LIF':
-                data = data[:, :FLAGS.n_regular]
+                data = data[:, :FLAGS.n_regular:subsample_rnn]
             elif d_name is 'ALIF':
-                data = data[:, FLAGS.n_regular:]
+                data = data[:, FLAGS.n_regular::subsample_rnn]
             elif d_name is 'input':
-                data = data[:, 2*n_neuron_per_channel:]
+                data = data[:, 2*n_neuron_per_channel::subsample_input]
 
             n_max = min(data.shape[1], n_max_neuron_per_raster)
             cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)

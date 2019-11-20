@@ -91,32 +91,34 @@ tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation t
 tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
 tf.app.flags.DEFINE_bool('do_plot', False, 'Perform plots')
-tf.app.flags.DEFINE_bool('monitor_plot', False, 'Perform plots during training')
-tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
+tf.app.flags.DEFINE_bool('monitor_plot', True, 'Perform plots during training')
+tf.app.flags.DEFINE_bool('interactive_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
-tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
+tf.app.flags.DEFINE_bool('preserve_state', False, 'preserve network state between training trials')
 
 if FLAGS.reproduce == 'debug':
     FLAGS.model = 'lsnn'
     FLAGS.beta = 1
     FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
     FLAGS.seq_len = 10
     FLAGS.seq_delay = 4
-    FLAGS.n_iter = 400
+    FLAGS.n_iter = 800
+    FLAGS.tau_a = 2000
 
-    FLAGS.min_hamming_dist = None
-    FLAGS.n_charac = 2
-    FLAGS.train_dict_size = 2
-    FLAGS.test_dict_size = 2
-    FLAGS.n_in = 40
-    FLAGS.do_plot = True
-    FLAGS.monitor_plot = True
-    FLAGS.interactive_plot = True
+    FLAGS.n_regular = 100
+    FLAGS.n_adaptive = 100
+
+    FLAGS.min_hamming_dist = 2
+    FLAGS.n_charac = 10
+    FLAGS.train_dict_size = 4
+    FLAGS.test_dict_size = 4
+    FLAGS.n_in = (FLAGS.n_charac + 2) * 6
+    # FLAGS.do_plot = True
+    # FLAGS.monitor_plot = True
+    # FLAGS.interactive_plot = True
 
 if FLAGS.reproduce == '560_LIF':
     print("Using the hyperparameters as in 560 paper: pure ELIF network")
@@ -390,6 +392,7 @@ with tf.name_scope('RecallLoss'):
     # target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
     # Y = tf.one_hot(target_nums_at_recall, depth=FLAGS.n_charac, name='Target')
     Y = tf.boolean_mask(target_sequence, recall_charac_mask, name='Target')
+    Y = tf.cast(Y, tf.float32)
 
     # MTP models do not use controller (modulator) population for output
     out_neurons = z_all
@@ -402,21 +405,23 @@ with tf.name_scope('RecallLoss'):
                                                          neuron_sign=rec_neuron_sign)
     else:
         w_out = tf.get_variable(name='out_weight', shape=[n_neurons, FLAGS.n_charac])
+    b_out = tf.get_variable(name='out_bias', shape=[FLAGS.n_charac])
 
-    out = einsum_bij_jk_to_bik(psp, w_out)
+    out = einsum_bij_jk_to_bik(psp, w_out) + b_out
     out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
     Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
 
     # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
     # loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=Y,
-    loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
+    # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
+    loss_recall = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=Y_predict))
 
     with tf.name_scope('PlotNodes'):
         out_plot = tf.nn.softmax(out)
         out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
     # _, recall_errors, false_sentence_id_list = error_rate(out_char_step, target_nums, input_nums, n_charac)
-    _, recall_errors = storerecall_error(out_char_step, target_sequence, recall_charac_mask)
+    _, recall_errors = storerecall_error(Y_predict, Y)
 
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
@@ -561,7 +566,7 @@ for k_iter in range(FLAGS.n_iter):
 
     if np.mod(k_iter, print_every) == 0:
 
-        print('''Iteration {}, statistics on the train set {:.2g} and test set average error {:.2g} +- {:.2g} (trial averaged)'''
+        print('''Iteration {}, average error on the train set {:.2g} and test set {:.2g} +- {:.2g} (trial averaged)'''
               .format(k_iter, np.mean(train_errors[-print_every:]), np.mean(validation_error_list[-print_every:]),
                       np.std(validation_error_list[-print_every:])))
 
