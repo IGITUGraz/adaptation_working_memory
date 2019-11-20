@@ -307,6 +307,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     target_batch = []
     output_mask_batch = []
     words_idxs = [i for i in range(value_dict.shape[0])]
+    word_count = 0
     # words_batch_stats = {i: 0 for i in range(value_dict.shape[0])}
     for b in range(batch_size):
         # generate valid store/recall signals by probability
@@ -314,12 +315,21 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         word_sequence_choice = np.random.choice(value_dict.shape[0], length)
 
         # ensure that the stored words are balanced in the batch (similar number of each word stored)
-        store_idx = np.nonzero(storerecall_sequence[0])[0]  # we balance only the first stored word
-        word_sequence_choice[store_idx] = words_idxs[b % len(words_idxs)]  # different word for every consecutive batch
-        # word_idx_at_first_store = word_sequence_choice[store_idx][0]
+        store_idxs = np.nonzero(storerecall_sequence[0])  # store step idxs
+        for si in store_idxs:
+            word_sequence_choice[si] = words_idxs[word_count % len(words_idxs)]  # different word per sequence
+            word_count += 1
+        # word_idx_at_first_store = word_sequence_choice[store_idxs][0]
         # words_batch_stats[word_idx_at_first_store] += 1
 
         values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
+        # # FIXME: no distractors version for debugging
+        # values_sequence = np.array(value_dict[word_sequence_choice])
+        # values_sequence_z = np.zeros_like(values_sequence)
+        # for si in store_idxs:
+        #     values_sequence_z[si] = value_dict[word_sequence_choice[si]]
+        # values_sequence = values_sequence_z.swapaxes(0, 1)
+
         # if b == 0:
         #     print(word_sequence_choice)
         #     print("actual words in sequence")
@@ -438,6 +448,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_p
     ylabel_y = 0.5
     fs = 10
     plt.rcParams.update({'font.size': fs})
+    batch = np.random.randint(FLAGS.batch_train) if batch == 0 else batch
 
     # Clear the axis to print new plots
     for k in range(ax_list.shape[0]):

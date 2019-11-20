@@ -109,7 +109,6 @@ if FLAGS.reproduce == 'debug':
     FLAGS.tau_a = 2000
     # FLAGS.preserve_state = False
     FLAGS.f0 = 500
-    FLAGS.reg = 0.01
     FLAGS.lr_decay = 0.8
 
     FLAGS.tau_char = 100
