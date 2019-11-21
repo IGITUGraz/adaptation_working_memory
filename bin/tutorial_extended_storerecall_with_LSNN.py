@@ -45,11 +45,11 @@ tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to resto
 tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
-tf.app.flags.DEFINE_integer('n_charac', 12, 'number of characters in the recall task')
+tf.app.flags.DEFINE_integer('n_charac', 20, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 112, 'number of spiking input units. Must be divisable by (n_charac+2)')
 tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
-tf.app.flags.DEFINE_integer('train_dict_size', 5, '')
-tf.app.flags.DEFINE_integer('test_dict_size', 5, '')
+tf.app.flags.DEFINE_integer('train_dict_size', 10, '')
+tf.app.flags.DEFINE_integer('test_dict_size', 10, '')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
 tf.app.flags.DEFINE_integer('n_adaptive', 60, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 200, 'input firing rate')
@@ -73,7 +73,7 @@ tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay'
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.3, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 1., 'regularization coefficient')
+tf.app.flags.DEFINE_float('reg', 0.01, 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring')
@@ -112,16 +112,18 @@ if FLAGS.reproduce == 'debug':
     # FLAGS.preserve_state = False
     FLAGS.f0 = 500
     FLAGS.lr_decay = 0.8
-    FLAGS.reg = 0.1
+    # FLAGS.reg = 0.01
+    FLAGS.max_in_bit_prob = 0.5
 
     FLAGS.tau_char = 100
+    # FLAGS.tau_out = 50
     FLAGS.n_regular = 100
     FLAGS.n_adaptive = 100
 
-    FLAGS.min_hamming_dist = 3
-    FLAGS.n_charac = 20
-    FLAGS.train_dict_size = 10
-    FLAGS.test_dict_size = 10
+    # FLAGS.min_hamming_dist = 5
+    # FLAGS.n_charac = 20
+    # FLAGS.train_dict_size = 10
+    # FLAGS.test_dict_size = 10
     FLAGS.n_in = (FLAGS.n_charac + 2) * FLAGS.n_per_channel
     # FLAGS.do_plot = True
     # FLAGS.monitor_plot = True
@@ -300,6 +302,14 @@ else:
     in_neuron_sign = None
     rec_neuron_sign = None
 
+# Save parameters and training log
+try:
+    flag_dict = FLAGS.flag_values_dict()
+except:
+    print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
+    flag_dict = FLAGS.__flags
+
+tau_a_spread = None
 # Generate the cell
 if FLAGS.model == 'lsnn':
     if FLAGS.tau_a_spread:
@@ -308,6 +318,7 @@ if FLAGS.model == 'lsnn':
         tau_a_spread = (1. - np.random.power(a=FLAGS.power_exp, size=FLAGS.n_regular+FLAGS.n_adaptive)) * FLAGS.tau_a
     else:
         tau_a_spread = FLAGS.tau_a
+    flag_dict['tauas'] = tau_a_spread
     beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
     cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
                 n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
@@ -358,6 +369,7 @@ train_value_dict, test_value_dict = generate_value_dicts(
     min_hamming_dist=FLAGS.min_hamming_dist)
 save_file({"train_value_dict": train_value_dict, "test_value_dict": test_value_dict},
           full_path, 'value_dicts', file_type='json')
+save_file(flag_dict, full_path, 'flags', file_type='json')
 
 
 def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None, test=False):
@@ -418,7 +430,7 @@ with tf.name_scope('RecallLoss'):
 
     out = einsum_bij_jk_to_bik(psp, w_out) + b_out
     # out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
-    out_char_step = out[:, ::FLAGS.tau_char]  # take last ms of every word step
+    out_char_step = out[:, FLAGS.tau_char//2::FLAGS.tau_char]  # take middle ms of every word step
     Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
 
     # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
@@ -430,7 +442,7 @@ with tf.name_scope('RecallLoss'):
         out_plot = tf.nn.sigmoid(out)
         out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
-    _, recall_errors = storerecall_error(Y_predict, Y)
+    recall_acc, recall_errors, per_bit_accuracy, per_bit_error = storerecall_error(Y_predict, Y)
 
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
@@ -558,6 +570,7 @@ ramping_learning_rate_op = tf.assign(learning_rate,
                                      FLAGS.learning_rate * ramping_learning_rate_values[clipped_global_step])
 
 train_errors = [1.]
+train_bit_error = None
 t_train = 0
 t_ref = time()
 for k_iter in range(FLAGS.n_iter):
@@ -623,7 +636,7 @@ for k_iter in range(FLAGS.n_iter):
                 t_train, t_run,
                 results_values['loss_recall'], results_values['loss_reg']
             ))
-
+            print(train_bit_error)
         if 0 < FLAGS.rewiring_connectivity:
             rewired_ref_list = ['w_in_val','w_rec_val','w_out']
             non_zeros = [np.sum(results_values[ref] != 0) for ref in rewired_ref_list]
@@ -669,11 +682,9 @@ for k_iter in range(FLAGS.n_iter):
                 update_plot(plt, ax_list, FLAGS, plot_results_values)
             else:
                 update_stp_plot(plt, ax_list, FLAGS, plot_results_values)
-            tmp_path = os.path.join(result_folder,
-                                    'tmp/figure' + start_time.strftime("%H%M") + '_' +
+            tmp_path = os.path.join(full_path,
+                                    'fig_train_' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
-            if not os.path.exists(os.path.join(result_folder, 'tmp')):
-                os.makedirs(os.path.join(result_folder, 'tmp'))
             fig.savefig(tmp_path, format='pdf')
 
         if np.mean(validation_error_list[-print_every:]) < FLAGS.stop_crit:
@@ -684,8 +695,8 @@ for k_iter in range(FLAGS.n_iter):
     train_dict = get_data_dict(FLAGS.batch_train)
     feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
     t0 = time()
-    final_state_value, _, _, train_error = sess.run(
-        [final_state, train_step, update_regularization_coeff, recall_errors], feed_dict=train_dict)
+    final_state_value, _, _, train_error, train_bit_error = sess.run(
+        [final_state, train_step, update_regularization_coeff, recall_errors, per_bit_error], feed_dict=train_dict)
     if FLAGS.preserve_state:
         last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
@@ -700,14 +711,6 @@ if FLAGS.save_data:
     saver.save(sess, os.path.join(full_path, 'model'))
     saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
 
-    # Save parameters and training log
-    try:
-        flag_dict = FLAGS.flag_values_dict()
-    except:
-        print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
-        flag_dict = FLAGS.__flags
-    if FLAGS.model == 'lsnn':
-        flag_dict['tauas'] = tau_a_spread
     results = {
         'error': validation_error_list[-1],
         'loss': test_loss_list[-1],
@@ -720,8 +723,6 @@ if FLAGS.save_data:
         'tau_delay_list': tau_delay_list,
         'flags': flag_dict,
     }
-
-    save_file(flag_dict, full_path, 'flags', file_type='json')
     save_file(results, full_path, 'training_results', file_type='json')
 
     if custom_plot is not None:

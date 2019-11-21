@@ -265,32 +265,44 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
     Ensures minimal hamming distance between test words and any training words.
     Ensures sparsity in active bit by limiting the percentage of active bits in a word by max_prob_active.
     """
-    # Generate dictionary of unique binary words for training set
-    dict_train = []
-    while len(dict_train) < train_dict_size:
-        train_candidate = random_binary_word(n_values, max_prob_active)
-        if not any([(train_candidate == w).all() for w in dict_train]):
-            dict_train.append(train_candidate)
-    assert len(dict_train) == train_dict_size
+    common_dict = []
+    while len(common_dict) < train_dict_size + test_dict_size:
+        test_candidate = random_binary_word(n_values, max_prob_active)
+        valid = True
+        for word in common_dict:
+            if hamming2(word, test_candidate) <= min_hamming_dist:
+                valid = False
+                break
+        if valid:
+            common_dict.append(test_candidate)
+    return np.array(common_dict[:train_dict_size]), np.array(common_dict[train_dict_size:])
 
-    # Generate dictionary of unique binary words for test set with minimal hamming distance to words in train set
-    dict_test = []
-    valid = True
-    if min_hamming_dist is not None:
-        while len(dict_test) < test_dict_size:
-            test_candidate = random_binary_word(n_values, max_prob_active)
-            for train_word in dict_train:
-                if hamming2(train_word, test_candidate) <= min_hamming_dist:
-                    valid = False
-                    break
-            if valid:
-                dict_test.append(test_candidate)
-            else:
-                valid = True
-        assert len(dict_test) == test_dict_size
-        return np.array(dict_train), np.array(dict_test)
-    else:
-        return np.array(dict_train), np.array(dict_train)
+    # # Generate dictionary of unique binary words for training set
+    # dict_train = []
+    # while len(dict_train) < train_dict_size:
+    #     train_candidate = random_binary_word(n_values, max_prob_active)
+    #     if not any([(train_candidate == w).all() for w in dict_train]):
+    #         dict_train.append(train_candidate)
+    # assert len(dict_train) == train_dict_size
+    #
+    # # Generate dictionary of unique binary words for test set with minimal hamming distance to words in train set
+    # dict_test = []
+    # valid = True
+    # if min_hamming_dist is not None:
+    #     while len(dict_test) < test_dict_size:
+    #         test_candidate = random_binary_word(n_values, max_prob_active)
+    #         for train_word in dict_train:
+    #             if hamming2(train_word, test_candidate) <= min_hamming_dist:
+    #                 valid = False
+    #                 break
+    #         if valid:
+    #             dict_test.append(test_candidate)
+    #         else:
+    #             valid = True
+    #     assert len(dict_test) == test_dict_size
+    #     return np.array(dict_train), np.array(dict_test)
+    # else:
+    #     return np.array(dict_train), np.array(dict_train)
 
 
 def randn_except(limit, not_num):
@@ -386,41 +398,42 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
     return input_spikes_batch, input_batch, target_batch, output_mask_batch
 
 
-def debug_plot_spiking_input_generation():
-    import matplotlib.pyplot as plt
-    n_values = 12
-    train_value_dict, test_value_dict = generate_value_dicts(n_values=n_values, train_dict_size=5,
-                                                             test_dict_size=5,
-                                                             max_prob_active=0.5)
-    n_neuron = 112
-    input_spikes_batch, input_batch, target_batch, output_mask_batch = \
-        generate_spiking_storerecall_batch(
-            batch_size=16, length=10, prob_storerecall=0.2, value_dict=train_value_dict,
-            n_charac_duration=200, n_neuron=n_neuron, f0=500. / 1000.)
-    batch=0
-    print(input_batch[batch].swapaxes(0, 1))
-
-    n_neuron_per_channel = n_neuron // (n_values + 2)  # 8
-    sr_spikes = input_spikes_batch[batch, :, :2 * n_neuron_per_channel]
-    fig, ax = plt.subplots(figsize=(8, 4), gridspec_kw={'wspace': 0, 'hspace': 0.2})
-    raster_plot(ax, sr_spikes)
-    plt.draw()
-    plt.pause(1)
+# def debug_plot_spiking_input_generation():
+#     import matplotlib.pyplot as plt
+#     n_values = 12
+#     train_value_dict, test_value_dict = generate_value_dicts(n_values=n_values, train_dict_size=5,
+#                                                              test_dict_size=5,
+#                                                              max_prob_active=0.5)
+#     n_neuron = 112
+#     input_spikes_batch, input_batch, target_batch, output_mask_batch = \
+#         generate_spiking_storerecall_batch(
+#             batch_size=16, length=10, prob_storerecall=0.2, value_dict=train_value_dict,
+#             n_charac_duration=200, n_neuron=n_neuron, f0=500. / 1000.)
+#     batch=0
+#     print(input_batch[batch].swapaxes(0, 1))
+#
+#     n_neuron_per_channel = n_neuron // (n_values + 2)  # 8
+#     sr_spikes = input_spikes_batch[batch, :, :2 * n_neuron_per_channel]
+#     fig, ax = plt.subplots(figsize=(8, 4), gridspec_kw={'wspace': 0, 'hspace': 0.2})
+#     raster_plot(ax, sr_spikes)
+#     plt.draw()
+#     plt.pause(1)
 
 
 def storerecall_error(output, target):
     """
-    Calculate the error over batch of input
-    :return:
+    Calculate the error of batch. (batch, time (1 or 2), output bits)
     """
     output = tf.where(output < 0.5, tf.zeros_like(output), tf.ones_like(output))
     output = tf.cast(output, dtype=tf.float32)
     # output = tf.Print(output, [output[0], target[0]], message="output, target", summarize=999)
-    char_correct = tf.cast(tf.equal(output, target), tf.float32)
-    accuracy_per_bit = tf.reduce_mean(char_correct)
-    error_per_bit = 1. - accuracy_per_bit
+    bit_accuracy = tf.cast(tf.equal(output, target), tf.float32)
+    per_bit_accuracy = tf.reduce_mean(bit_accuracy, axis=0)
+    per_bit_error = 1. - per_bit_accuracy
+    mean_bit_accuracy = tf.reduce_mean(per_bit_accuracy)
+    mean_bit_error = 1. - mean_bit_accuracy
 
-    return accuracy_per_bit, error_per_bit
+    return mean_bit_accuracy, mean_bit_error, per_bit_accuracy, per_bit_error
 
 
 def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac_duration, n_neuron, f0=200 / 1000,
