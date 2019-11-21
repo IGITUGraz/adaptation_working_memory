@@ -87,8 +87,8 @@ tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation t
 tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
 tf.app.flags.DEFINE_bool('do_plot', False, 'Perform plots')
-tf.app.flags.DEFINE_bool('monitor_plot', False, 'Perform plots during training')
-tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
+tf.app.flags.DEFINE_bool('monitor_plot', True, 'Perform plots during training')
+tf.app.flags.DEFINE_bool('interactive_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
@@ -139,17 +139,21 @@ if FLAGS.reproduce == '560_ALIF':
     FLAGS.n_iter = 400
 
 if FLAGS.reproduce == '560_LSNN':
-    print("Using the hyperparameters as in 560 paper: pure ALIF network")
+    print("Using the hyperparameters as in 560 paper for LSNN autocorr intrinsic timescale analysis (Stokes)")
     FLAGS.model = 'lsnn'
     FLAGS.beta = 1
     FLAGS.thr = 0.01
-    FLAGS.n_regular = 120
-    FLAGS.n_adaptive = 120
+    FLAGS.n_regular = 200
+    FLAGS.n_adaptive = 200
     FLAGS.seq_len = 20
     FLAGS.seq_delay = 10
     FLAGS.tau_a = 2000
     FLAGS.n_in = 40
     FLAGS.n_iter = 400
+    FLAGS.batch_train = 64
+    FLAGS.batch_test = 64
+    FLAGS.batch_val = 64
+    # FLAGS.stop_crit = 0.05
 
 if FLAGS.reproduce == '560_table':
     print("Using the hyperparameters as in 560 paper: ALIF table")
