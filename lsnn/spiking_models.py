@@ -229,7 +229,7 @@ class LIF(Cell):
             else:
                 if rec_neuron_sign is not None or in_neuron_sign is not None:
                     raise NotImplementedError('Neuron sign requested but this is only implemented with rewiring')
-                self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec) * self.V0, dtype=dtype,
+                self.w_rec_var = tf.Variable(-np.abs(rd.randn(n_rec, n_rec)) / np.sqrt(n_rec**2) * self.V0, dtype=dtype,
                                              name='RecurrentWeight')
                 self.w_rec_val = self.w_rec_var
 

@@ -3,6 +3,7 @@ import numpy.random as rd
 import tensorflow as tf
 from matplotlib import collections as mc, patches
 from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot, hide_bottom_axis
+from tqdm import tqdm
 
 
 # Variations of sequence with specific delay for plotting
@@ -259,7 +260,7 @@ def hamming2(s1, s2):
     return np.count_nonzero(s1 != s2)  # a faster solution
 
 
-def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5, max_prob_active=0.2):
+def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5, max_prob_active=None):
     """
     Generate dictionaries of binary words for training and testing.
     Ensures minimal hamming distance between test words and any training words.
@@ -317,7 +318,7 @@ def remove_consecutive_same_numbers(sequence, max_num):
     return sequence
 
 
-def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict):
+def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict, distractors):
     """
     Given the value dictionary generate a batch of store-recall sequences with specified probability of store/recall
     :param batch_size: size of mini-batch
@@ -342,20 +343,22 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         word_sequence_choice = remove_consecutive_same_numbers(word_sequence_choice, value_dict.shape[0])
 
         # ensure that the stored words are balanced in the batch (similar number of each word stored)
-        store_idxs = np.nonzero(storerecall_sequence[0])  # store step idxs
+        store_sequence = storerecall_sequence[0]
+        store_idxs = np.nonzero(store_sequence)[0]  # store step idxs (only one dimension so taking [0]
         for si in store_idxs:
             word_sequence_choice[si] = words_idxs[word_count % len(words_idxs)]  # different word per sequence
             word_count += 1
         # word_idx_at_first_store = word_sequence_choice[store_idxs][0]
         # words_batch_stats[word_idx_at_first_store] += 1
 
-        values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
-        # # FIXME: no distractors version for debugging
-        # values_sequence = np.array(value_dict[word_sequence_choice])
-        # values_sequence_z = np.zeros_like(values_sequence)
-        # for si in store_idxs:
-        #     values_sequence_z[si] = value_dict[word_sequence_choice[si]]
-        # values_sequence = values_sequence_z.swapaxes(0, 1)
+        if distractors:
+            values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
+        else:
+            values_sequence = np.array(value_dict[word_sequence_choice])
+            values_sequence_z = np.zeros_like(values_sequence)
+            for si in store_idxs:
+                values_sequence_z[si] = value_dict[word_sequence_choice[si]]
+            values_sequence = values_sequence_z.swapaxes(0, 1)
 
         # if b == 0:
         #     print(word_sequence_choice)
@@ -380,12 +383,36 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
 
 
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
-                                       n_neuron, f0):
-    n_values = value_dict[0].shape[0]  # number of bits in a value (width of value word)
+                                       n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors):
+    n_values = test_dict[0].shape[0]  # number of bits in a value (width of value word)
+    if value_dict is None:
+        # FIXME: generate training dict with random words 0.2 bit probability and diff from validation dict!!!
+        common_dict = []
+        # pbar = tqdm(total=100)
+        while len(common_dict) < 100:  # 50 random train words
+            test_candidate = random_binary_word(n_values, max_prob_active)
+            valid = True
+            for word in test_dict:  # make sure sufficiently different from test words
+                if hamming2(word, test_candidate) <= min_hamming_dist:
+                    valid = False
+                    break
+            if valid:
+                for word in common_dict:  # make sure sufficiently different from train words
+                    if hamming2(word, test_candidate) <= min_hamming_dist:
+                        valid = False
+                        break
+            if valid:
+                common_dict.append(test_candidate)
+                # pbar.update(1)
+        # pbar.close()
+        value_dict = np.array(common_dict)
+        # print("TRAIN DICT", value_dict)
+    # else:
+    #     print("TEST DICT", value_dict)
     assert n_neuron % (n_values + 2) == 0,\
         "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
     input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
-        batch_size, length, prob_storerecall, value_dict)
+        batch_size, length, prob_storerecall, value_dict, distractors)
     input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
     n_neuron_per_channel = n_neuron // (n_values + 2)
     input_rates_batch = np.repeat(input_rates_batch, n_neuron_per_channel, axis=1)
@@ -464,19 +491,19 @@ def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac
     return spikes, is_recall, target_sequence, None, input_nums, target_nums
 
 
-def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_per_raster=100):
+def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuron_per_raster=100):
     """
     This function iterates the matplotlib figure on every call.
     It plots the data for a fixed sequence that should be representative of the expected computation
     :return:
     """
-    subsample_input = 5
-    subsample_rnn = 2
+    subsample_input = FLAGS.n_per_channel
+    subsample_rnn = FLAGS.n_per_channel
     ylabel_x = -0.11
     ylabel_y = 0.5
     fs = 10
     plt.rcParams.update({'font.size': fs})
-    batch = np.random.randint(FLAGS.batch_train) if batch == 0 else batch
+    batch = np.random.randint(FLAGS.batch_train) if batch is None else batch
 
     # Clear the axis to print new plots
     for k in range(ax_list.shape[0]):
