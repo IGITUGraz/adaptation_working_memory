@@ -3,7 +3,7 @@ import numpy.random as rd
 import tensorflow as tf
 from matplotlib import collections as mc, patches
 from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot, hide_bottom_axis
-from tqdm import tqdm
+# from tqdm import tqdm
 
 
 # Variations of sequence with specific delay for plotting
@@ -384,11 +384,11 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
                                        n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors):
     n_values = test_dict[0].shape[0]  # number of bits in a value (width of value word)
+    n_random_words = 2 * n_values if n_values >= 10 else n_values
     if value_dict is None:
-        # FIXME: generate training dict with random words 0.2 bit probability and diff from validation dict!!!
         common_dict = []
-        # pbar = tqdm(total=100)
-        while len(common_dict) < 100:  # 50 random train words
+        # pbar = tqdm(total=n_random_words)
+        while len(common_dict) < n_random_words:  # n_random_words random train words
             test_candidate = random_binary_word(n_values, max_prob_active)
             valid = True
             for word in test_dict:  # make sure sufficiently different from test words
@@ -548,12 +548,13 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
                 data = data[:, FLAGS.n_regular::subsample_rnn]
             elif d_name is 'input':
                 data = data[:, sr_num_neurons:]
+                max_y_tick_label = str(data.shape[-1])
                 data = np.mean(data.reshape(data.shape[0], -1, n_neuron_per_channel), axis=2)
 
                 cax = ax.imshow(data.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
                 ax.set_ylabel(d_name, fontsize=fs)
                 ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-                ax.set_yticklabels(['1', str(data.shape[-1])])
+                # ax.set_yticklabels(['1', max_y_tick_label])
                 continue
 
             n_max = min(data.shape[1], n_max_neuron_per_raster)

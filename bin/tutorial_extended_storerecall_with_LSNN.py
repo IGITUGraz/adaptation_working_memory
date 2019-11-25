@@ -73,7 +73,7 @@ tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay'
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 0.01, 'regularization coefficient')
+tf.app.flags.DEFINE_float('reg', 0.001, 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring')
@@ -106,16 +106,16 @@ assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
 if FLAGS.reproduce == 'debug':
     FLAGS.model = 'lsnn'
-    FLAGS.beta = 1
-    FLAGS.thr = 0.01
+    # FLAGS.beta = 1
+    # FLAGS.thr = 0.01
     FLAGS.seq_len = 10
     FLAGS.seq_delay = 4
     # FLAGS.n_iter = 2000
-    FLAGS.tau_a = 2000
+    # FLAGS.tau_a = 2000
     # FLAGS.preserve_state = False
     FLAGS.f0 = 500
     FLAGS.lr_decay = 0.8
-    FLAGS.reg = 0.001
+    # FLAGS.reg = 0.0005
     # FLAGS.max_in_bit_prob = 0.5
     # FLAGS.learning_rate = 0.01
 
@@ -450,7 +450,7 @@ with tf.name_scope('RecallLoss'):
 
     with tf.name_scope('PlotNodes'):
         out_plot = tf.sigmoid(out)
-        out_plot_char_step = tf_downsample(Y_predict_sigm, new_size=FLAGS.seq_len, axis=1)
+        out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
     recall_acc, recall_errors, per_bit_accuracy, per_bit_error = storerecall_error(Y_predict, Y)
 
