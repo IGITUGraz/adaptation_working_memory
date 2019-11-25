@@ -46,7 +46,7 @@ tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation se
 tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 50, 'number of characters in the recall task')
-tf.app.flags.DEFINE_integer('n_in', 112, 'number of spiking input units. Must be divisable by (n_charac+2)')
+tf.app.flags.DEFINE_integer('n_in', 200, 'number of spiking input units. Must be divisable by (n_charac*2)')
 tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
 tf.app.flags.DEFINE_integer('train_dict_size', 0, '')
 tf.app.flags.DEFINE_integer('test_dict_size', 10, '')
@@ -102,6 +102,8 @@ tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between
 tf.app.flags.DEFINE_bool('ramping_learning_rate', True, 'ramp up learning rate in first 100 steps')
 tf.app.flags.DEFINE_bool('distractors', False, 'show random inputs during delays')
 
+assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
+
 if FLAGS.reproduce == 'debug':
     FLAGS.model = 'lsnn'
     FLAGS.beta = 1
@@ -126,7 +128,7 @@ if FLAGS.reproduce == 'debug':
     # FLAGS.n_charac = 20
     # FLAGS.train_dict_size = 10
     # FLAGS.test_dict_size = 10
-    FLAGS.n_in = (FLAGS.n_charac + 2) * FLAGS.n_per_channel
+    FLAGS.n_in = (FLAGS.n_charac * 2) * FLAGS.n_per_channel
     # FLAGS.do_plot = True
     # FLAGS.monitor_plot = True
     # FLAGS.interactive_plot = True
@@ -340,8 +342,8 @@ else:
 
 # balance the input weights of store-recall signals with the rest of the bits
 sr_win_coeff = FLAGS.n_charac
-increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*2, :],
-                                cell.w_in_init[:FLAGS.n_per_channel*2, :] * sr_win_coeff)
+increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*FLAGS.n_charac, :],
+                                cell.w_in_init[:FLAGS.n_per_channel*FLAGS.n_charac, :] * sr_win_coeff)
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
@@ -503,7 +505,7 @@ sess.run(tf.global_variables_initializer())
 # sess.run(increase_sr_weights)
 
 w_in_init = sess.run(cell.w_in_var)
-w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac + 2), FLAGS.n_per_channel, w_in_init.shape[1]))
+w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 2), FLAGS.n_per_channel, w_in_init.shape[1]))
 w_in_init_avg = np.mean(np.abs(w_in_init_avg), axis=(1, 2))
 print(w_in_init_avg)
 
@@ -577,6 +579,7 @@ clipped_global_step = tf.minimum(global_step, ramping_iterations - 1)
 ramping_learning_rate_op = tf.assign(learning_rate,
                                      FLAGS.learning_rate * ramping_learning_rate_values[clipped_global_step])
 
+smallest_error = 999.
 train_errors = [1.]
 train_bit_error = None
 t_train = 0
@@ -629,6 +632,20 @@ for k_iter in range(FLAGS.n_iter):
         firing_rate_stats = get_stats(results_values['av'] * 1000)
         reg_coeff_stats = get_stats(results_values['adaptive_regularization_coeff'])
 
+        results = {
+            'error': validation_error_list[-1],
+            'loss': test_loss_list[-1],
+            'loss_with_reg': test_loss_with_reg_list[-1],
+            'loss_with_reg_list': test_loss_with_reg_list,
+            'error_list': validation_error_list,
+            'loss_list': test_loss_list,
+            'time_to_ref': time_to_ref_list,
+            'training_time': training_time_list,
+            'tau_delay_list': tau_delay_list,
+            'flags': flag_dict,
+        }
+        save_file(results, full_path, 'training_results', file_type='json')
+
         if FLAGS.verbose:
             print('''
             firing rate (Hz)  min {:.0f} ({}) \t max {:.0f} ({}) \t
@@ -644,7 +661,7 @@ for k_iter in range(FLAGS.n_iter):
                 t_train, t_run,
                 results_values['loss_recall'], results_values['loss_reg']
             ))
-            print(train_bit_error)
+            # print(train_bit_error)
         if 0 < FLAGS.rewiring_connectivity:
             rewired_ref_list = ['w_in_val','w_rec_val','w_out']
             non_zeros = [np.sum(results_values[ref] != 0) for ref in rewired_ref_list]
@@ -694,6 +711,11 @@ for k_iter in range(FLAGS.n_iter):
                                     'fig_train_' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
             fig.savefig(tmp_path, format='pdf')
+        if np.mean(validation_error_list[-print_every:]) < smallest_error:
+            smallest_error = np.mean(validation_error_list[-print_every:])
+            # Save the tensorflow graph
+            saver.save(sess, os.path.join(full_path, 'model'))
+            saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
 
         if np.mean(validation_error_list[-print_every:]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
@@ -714,10 +736,6 @@ print('FINISHED IN {:.2g} s'.format(time() - t_ref))
 
 # Save everything
 if FLAGS.save_data:
-
-    # Save the tensorflow graph
-    saver.save(sess, os.path.join(full_path, 'model'))
-    saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
 
     results = {
         'error': validation_error_list[-1],
@@ -750,15 +768,15 @@ if FLAGS.save_data:
     # Save sample trajectory (input, output, etc. for plotting)
     test_errors = []
     for i in range(16):
-        test_dict = get_data_dict(FLAGS.batch_test)
+        test_dict = get_data_dict(FLAGS.batch_test, test=True)
         feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
             cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
 
         results_values, plot_results_values, in_spk, spk, spk_con = sess.run(
             [results_tensors, plot_result_tensors, input_spikes, z, z_con],
             feed_dict=test_dict)
-        # if FLAGS.preserve_state:
-        #   last_final_state_state_testing_pointer[0] = results_values['final_state']
+        if FLAGS.preserve_state:
+            last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
 
     if FLAGS.do_plot and FLAGS.monitor_plot:

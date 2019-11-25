@@ -327,7 +327,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     :param value_dict: dictionary of binary words to use
     :return: mini-batch of store-recall sequences (batch_size, channels, length)
     """
-    # n_values = value_dict[0].shape[0]  # number of bits in a value (width of value word)
+    n_values = value_dict[0].shape[0]  # number of bits in a value (width of value word)
     input_batch = []
     target_batch = []
     output_mask_batch = []
@@ -348,8 +348,6 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         for si in store_idxs:
             word_sequence_choice[si] = words_idxs[word_count % len(words_idxs)]  # different word per sequence
             word_count += 1
-        # word_idx_at_first_store = word_sequence_choice[store_idxs][0]
-        # words_batch_stats[word_idx_at_first_store] += 1
 
         if distractors:
             values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
@@ -364,7 +362,8 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         #     print(word_sequence_choice)
         #     print("actual words in sequence")
         #     print(values_sequence)
-        input_sequence = np.vstack((storerecall_sequence, values_sequence))  # channels, length
+        repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
+        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence))  # channels, length
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
             store_seq = storerecall_sequence[0]
@@ -372,8 +371,8 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
             if store_seq[step] == 1:
                 next_target = values_sequence[:, step]
             if recall_seq[step] == 1:
-                target_sequence[:, step] = next_target
-                input_sequence[2:, step] = 0
+                target_sequence[:, step] = 1 - next_target  # FIXME: inverse target testing
+                input_sequence[n_values:, step] = 0
 
         input_batch.append(input_sequence)
         target_batch.append(target_sequence)
@@ -409,12 +408,12 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
         # print("TRAIN DICT", value_dict)
     # else:
     #     print("TEST DICT", value_dict)
-    assert n_neuron % (n_values + 2) == 0,\
+    assert n_neuron % (n_values * 2) == 0,\
         "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
     input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
         batch_size, length, prob_storerecall, value_dict, distractors)
     input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
-    n_neuron_per_channel = n_neuron // (n_values + 2)
+    n_neuron_per_channel = n_neuron // (n_values * 2)
     input_rates_batch = np.repeat(input_rates_batch, n_neuron_per_channel, axis=1)
     input_rates_batch = np.repeat(input_rates_batch, n_charac_duration, axis=2)
     input_spikes_batch = generate_poisson_noise_np(input_rates_batch)
@@ -516,9 +515,15 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
 
     # PLOT STORE-RECALL SIGNAL SPIKES
     ax = ax_list[0]
-    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac + 2)
-    sr_spikes = plot_result_values['input_spikes'][batch, :, :2*n_neuron_per_channel]
-    raster_plot(ax, sr_spikes[:, ::subsample_input], linewidth=0.15)
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2)
+    sr_num_channels = FLAGS.n_charac
+    sr_num_neurons = sr_num_channels*n_neuron_per_channel
+    sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
+    # raster_plot(ax, sr_spikes[:, ::subsample_input], linewidth=0.15)
+    sr_channel_neurons = sr_num_neurons // 2
+    sr_channels = np.mean(sr_spikes.reshape(sr_spikes.shape[0], -1, sr_channel_neurons), axis=2)
+    cax = ax.imshow(sr_channels.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
+
     ax.set_yticklabels([])
     ax.text(left_margin, 0.8 - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
     ax.text(left_margin, 0.4 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
@@ -542,7 +547,14 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
             elif d_name is 'ALIF':
                 data = data[:, FLAGS.n_regular::subsample_rnn]
             elif d_name is 'input':
-                data = data[:, 2*n_neuron_per_channel::subsample_input]
+                data = data[:, sr_num_neurons:]
+                data = np.mean(data.reshape(data.shape[0], -1, n_neuron_per_channel), axis=2)
+
+                cax = ax.imshow(data.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
+                ax.set_ylabel(d_name, fontsize=fs)
+                ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+                ax.set_yticklabels(['1', str(data.shape[-1])])
+                continue
 
             n_max = min(data.shape[1], n_max_neuron_per_raster)
             cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
