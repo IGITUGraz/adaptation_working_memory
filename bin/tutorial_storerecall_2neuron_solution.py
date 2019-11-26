@@ -474,7 +474,7 @@ w_in = np.vstack((w_in_b0, w_in_b1, w_in_s, w_in_r))
 set_w_in = tf.assign(cell.w_in_var, w_in)
 sess.run(set_w_in)
 
-w_out_v = np.array([[-1, 1], [1, -1]])
+w_out_v = np.array([[0, 10], [10, 0]])
 set_w_out = tf.assign(w_out, w_out_v)
 sess.run(set_w_out)
 
@@ -570,7 +570,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
 
     # plot output per tau_char
     data = plot_result_values['out_plot_char_step'][batch]
-    data = np.array([(d[0] - d[1] + 1) / 2 for d in data])
+    data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
     data[np.invert(mask)] = -1
     lines = []
     ind_nt = np.argwhere(data != -1)
@@ -582,7 +582,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
 
     # plot softmax of psp-s per dt for more intuitive monitoring
     # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch, :, 0]
+    output2 = plot_result_values['out_plot'][batch, :, 1]
     presentation_steps = np.arange(output2.shape[0])
     ax.set_yticks([0, 0.5, 1])
     ax.grid(color='black', alpha=0.15, linewidth=0.4)
