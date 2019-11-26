@@ -594,15 +594,27 @@ for k_iter in range(FLAGS.n_iter):
         new_lr = sess.run(decay_learning_rate_op)
         print('Decaying learning rate: {:.2g} -> {:.2g}'.format(old_lr, new_lr))
 
+    # train
+    train_dict = get_data_dict(FLAGS.batch_train)
+    feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
+    t0 = time()
+    final_state_value, _, _, train_error, train_bit_error, plot_results_values = sess.run(
+        [final_state, train_step, update_regularization_coeff, recall_errors, per_bit_error, plot_result_tensors],
+        feed_dict=train_dict)
+    if FLAGS.preserve_state:
+        last_final_state_state_training_pointer[0] = final_state_value
+    t_train = time() - t0
+    train_errors.append(train_error)
+
     # Monitor the training with a validation set
     t0 = time()
     val_dict = get_data_dict(FLAGS.batch_val, test=True)
     feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
-
-    results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
+    # results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
+    results_values = sess.run(results_tensors, feed_dict=val_dict)
     if FLAGS.preserve_state:
         last_final_state_state_validation_pointer[0] = results_values['final_state']
-        last_final_state_state_testing_pointer[0] = results_values['final_state']
+        # last_final_state_state_testing_pointer[0] = results_values['final_state']
     t_run = time() - t0
 
     # Storage of the results
@@ -721,16 +733,7 @@ for k_iter in range(FLAGS.n_iter):
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
             break
 
-    # train
-    train_dict = get_data_dict(FLAGS.batch_train)
-    feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
-    t0 = time()
-    final_state_value, _, _, train_error, train_bit_error = sess.run(
-        [final_state, train_step, update_regularization_coeff, recall_errors, per_bit_error], feed_dict=train_dict)
-    if FLAGS.preserve_state:
-        last_final_state_state_training_pointer[0] = final_state_value
-    t_train = time() - t0
-    train_errors.append(train_error)
+
 
 print('FINISHED IN {:.2g} s'.format(time() - t_ref))
 
