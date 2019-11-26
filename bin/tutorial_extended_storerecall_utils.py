@@ -363,7 +363,8 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         #     print("actual words in sequence")
         #     print(values_sequence)
         repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
-        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence))  # channels, length
+        inv_values_sequence = 1 - values_sequence
+        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence, inv_values_sequence))  # channels, length
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
             store_seq = storerecall_sequence[0]
@@ -371,7 +372,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
             if store_seq[step] == 1:
                 next_target = values_sequence[:, step]
             if recall_seq[step] == 1:
-                target_sequence[:, step] = 1 - next_target  # FIXME: inverse target testing
+                target_sequence[:, step] = next_target
                 input_sequence[n_values:, step] = 0
 
         input_batch.append(input_sequence)
@@ -408,12 +409,12 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
         # print("TRAIN DICT", value_dict)
     # else:
     #     print("TEST DICT", value_dict)
-    assert n_neuron % (n_values * 2) == 0,\
+    assert n_neuron % (n_values * 3) == 0,\
         "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
     input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
         batch_size, length, prob_storerecall, value_dict, distractors)
     input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
-    n_neuron_per_channel = n_neuron // (n_values * 2)
+    n_neuron_per_channel = n_neuron // (n_values * 3)
     input_rates_batch = np.repeat(input_rates_batch, n_neuron_per_channel, axis=1)
     input_rates_batch = np.repeat(input_rates_batch, n_charac_duration, axis=2)
     input_spikes_batch = generate_poisson_noise_np(input_rates_batch)
@@ -515,7 +516,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
 
     # PLOT STORE-RECALL SIGNAL SPIKES
     ax = ax_list[0]
-    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2)
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 3)
     sr_num_channels = FLAGS.n_charac
     sr_num_neurons = sr_num_channels*n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]

@@ -128,7 +128,7 @@ if FLAGS.reproduce == 'debug':
     # FLAGS.n_charac = 20
     # FLAGS.train_dict_size = 10
     # FLAGS.test_dict_size = 10
-    FLAGS.n_in = (FLAGS.n_charac * 2) * FLAGS.n_per_channel
+    FLAGS.n_in = (FLAGS.n_charac * 3) * FLAGS.n_per_channel
     # FLAGS.do_plot = True
     # FLAGS.monitor_plot = True
     # FLAGS.interactive_plot = True
@@ -505,7 +505,7 @@ sess.run(tf.global_variables_initializer())
 # sess.run(increase_sr_weights)
 
 w_in_init = sess.run(cell.w_in_var)
-w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 2), FLAGS.n_per_channel, w_in_init.shape[1]))
+w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 3), FLAGS.n_per_channel, w_in_init.shape[1]))
 w_in_init_avg = np.mean(np.abs(w_in_init_avg), axis=(1, 2))
 print(w_in_init_avg)
 
