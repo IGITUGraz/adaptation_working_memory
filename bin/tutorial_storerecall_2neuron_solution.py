@@ -80,7 +80,7 @@ tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', False, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
-tf.app.flags.DEFINE_bool('preserve_state', False, '')
+tf.app.flags.DEFINE_bool('preserve_state', True, '')
 FLAGS.thr = FLAGS.thr * FLAGS.V0  # scaling the threshold too!
 
 
@@ -399,8 +399,8 @@ with tf.name_scope('RecallLoss'):
         w_out = tf.get_variable(name='out_weight', shape=[n_neurons, n_output_symbols])
 
     out = einsum_bij_jk_to_bik(psp, w_out)
-    # out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
-    out_char_step = out[:, FLAGS.tau_char//2::FLAGS.tau_char]
+    out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
+    # out_char_step = out[:, FLAGS.tau_char//2::FLAGS.tau_char]
     Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
 
     # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
@@ -461,7 +461,7 @@ sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placem
 sess.run(tf.global_variables_initializer())
 
 # print("PRE w_rec", sess.run(cell.w_rec_var))
-w_rec = np.array([[0, -1], [-1, 0]])
+w_rec = np.array([[0, 0], [0, 0]])
 set_w_rec = tf.assign(cell.w_rec_var, w_rec)
 sess.run(set_w_rec)
 
