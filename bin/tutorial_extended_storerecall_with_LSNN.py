@@ -275,6 +275,7 @@ tf.set_random_seed(seed)
 dt = 1.
 repeat_batch_test = 10
 print_every = FLAGS.print_every
+n_total_neurons = FLAGS.n_regular + FLAGS.n_adaptive
 
 # Frequencies
 input_f0 = FLAGS.f0 / 1000  # in kHz in coherence with the usgae of ms for time
@@ -298,8 +299,8 @@ if 0 < FLAGS.rewiring_connectivity and FLAGS.neuron_sign:
     in_neuron_sign = np.concatenate([-np.ones(n_inhibitory_in), np.ones(n_excitatory_in)])
     np.random.shuffle(in_neuron_sign)
 
-    n_excitatory = int(0.75 * (FLAGS.n_regular + FLAGS.n_adaptive))
-    n_inhibitory = FLAGS.n_regular + FLAGS.n_adaptive - n_excitatory
+    n_excitatory = int(0.75 * n_total_neurons)
+    n_inhibitory = n_total_neurons - n_excitatory
     rec_neuron_sign = np.concatenate([-np.ones(n_inhibitory), np.ones(n_excitatory)])
 else:
     if not FLAGS.neuron_sign: print('WARNING: Neuron sign is set to None without rewiring but sign is requested')
@@ -324,7 +325,7 @@ if FLAGS.model == 'lsnn':
         tau_a_spread = FLAGS.tau_a
     flag_dict['tauas'] = tau_a_spread
     beta = np.concatenate([np.zeros(FLAGS.n_regular), np.ones(FLAGS.n_adaptive) * FLAGS.beta])
-    cell = ALIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v, n_delay=FLAGS.n_delay,
+    cell = ALIF(n_in=FLAGS.n_in, n_rec=n_total_neurons, tau=tau_v, n_delay=FLAGS.n_delay,
                 n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
                 rewiring_connectivity=FLAGS.rewiring_connectivity,
                 in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
@@ -332,7 +333,7 @@ if FLAGS.model == 'lsnn':
                 )
 else:
     cell = STP(
-        n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
+        n_in=FLAGS.n_in, n_rec=n_total_neurons, tau=tau_v,
         n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
         rewiring_connectivity=FLAGS.rewiring_connectivity,
         in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
@@ -428,7 +429,7 @@ with tf.name_scope('RecallLoss'):
     psp = exp_convolve(out_neurons, decay=decay)
 
     if 0 < FLAGS.rewiring_connectivity and 0 < FLAGS.readout_rewiring_connectivity:
-        w_out, w_out_sign, w_out_var, _ = weight_sampler(FLAGS.n_regular + FLAGS.n_adaptive, FLAGS.n_charac,
+        w_out, w_out_sign, w_out_var, _ = weight_sampler(n_total_neurons, FLAGS.n_charac,
                                                          FLAGS.readout_rewiring_connectivity,
                                                          neuron_sign=rec_neuron_sign)
     else:
@@ -504,10 +505,29 @@ sess = tf.Session(config=config)
 sess.run(tf.global_variables_initializer())
 # sess.run(increase_sr_weights)
 
-w_in_init = sess.run(cell.w_in_var)
-w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 3), FLAGS.n_per_channel, w_in_init.shape[1]))
-w_in_init_avg = np.mean(np.abs(w_in_init_avg), axis=(1, 2))
-print(w_in_init_avg)
+# w_in_init = sess.run(cell.w_in_var)
+# w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 3), FLAGS.n_per_channel, w_in_init.shape[1]))
+# w_in_init_avg = np.mean(np.abs(w_in_init_avg), axis=(1, 2))
+# print(w_in_init_avg)
+
+# if FLAGS.handcraft:
+    # # print("PRE w_rec", sess.run(cell.w_rec_var))
+    # set_w_rec = tf.assign(cell.w_rec_var, np.zeros((n_total_neurons, n_total_neurons)))
+    # sess.run(set_w_rec)
+    #
+    # w_in_b0 = np.repeat(np.array([[0.002, -0.1]]), FLAGS.n_per_channel, axis=0)
+    # w_in_b1 = np.repeat(np.array([[-0.1, 0.002]]), FLAGS.n_per_channel, axis=0)
+    # w_in_s = np.repeat(np.array([[0.1 for _ in range(n_total_neurons)]]), FLAGS.n_per_channel * (FLAGS.n_charac // 2), axis=0)
+    # w_in_r = np.repeat(np.array([[0.1 for _ in range(n_total_neurons)]]), FLAGS.n_per_channel * (FLAGS.n_charac // 2), axis=0)
+    # w_in = np.vstack((w_in_s, w_in_r, w_in_b0, w_in_b1))
+    # # print("w_in shape", w_in.shape)
+    # set_w_in = tf.assign(cell.w_in_var, w_in)
+    # sess.run(set_w_in)
+    #
+    # w_out_v = np.array([[0, 10], [10, 0]])
+    # set_w_out = tf.assign(w_out, w_out_v)
+    # sess.run(set_w_out)
+
 
 if len(FLAGS.checkpoint) > 0:
     saver = tf.train.Saver(tf.get_collection_ref(tf.GraphKeys.GLOBAL_VARIABLES))
