@@ -101,6 +101,7 @@ tf.app.flags.DEFINE_bool('adaptive_reg', False, 'Regularization coefficient incr
 tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
 tf.app.flags.DEFINE_bool('ramping_learning_rate', True, 'ramp up learning rate in first 100 steps')
 tf.app.flags.DEFINE_bool('distractors', False, 'show random inputs during delays')
+tf.app.flags.DEFINE_bool('entropy_loss', False, 'include entropy in the loss')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -417,7 +418,7 @@ z_con = []
 z_all = z
 
 with tf.name_scope('RecallLoss'):
-    epsilon = tf.constant(1e-5, name="epsilon")
+    epsilon = tf.constant(1e-8, name="epsilon")
     # target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
     # Y = tf.one_hot(target_nums_at_recall, depth=FLAGS.n_charac, name='Target')
     Y = tf.boolean_mask(target_sequence, recall_charac_mask, name='Target')
@@ -483,6 +484,10 @@ with tf.name_scope('OptimizationScheme'):
     decay_learning_rate_op = tf.assign(learning_rate, learning_rate * FLAGS.lr_decay)
 
     loss = loss_reg + loss_recall
+
+    if FLAGS.entropy_loss:
+        loss_entropy = tf.reduce_mean(Y_predict_sigm * tf.log(Y_predict_sigm + epsilon))
+        loss = loss + 0.3 * loss_entropy
 
     opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
