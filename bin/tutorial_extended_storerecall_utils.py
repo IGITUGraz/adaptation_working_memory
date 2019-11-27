@@ -244,10 +244,14 @@ def generate_storerecall_signals_with_prob(length, prob):
 
 def random_binary_word(width, max_prob_active=None):
     """Generate random binary word of specific width"""
-    if max_prob_active is None:
-        return np.random.randint(2, size=width)
-    else:
+    word = np.random.randint(2, size=width)
+    # don't use blank words (all zeros)
+    while sum(word) == 0:
         word = np.random.randint(2, size=width)
+
+    if max_prob_active is None:
+        return word
+    else:
         while sum(word) > int(width * max_prob_active):
             word = np.random.randint(2, size=width)
         return word
