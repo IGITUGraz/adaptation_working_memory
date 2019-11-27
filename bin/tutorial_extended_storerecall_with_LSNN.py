@@ -427,7 +427,6 @@ with tf.name_scope('RecallLoss'):
     # target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
     # Y = tf.one_hot(target_nums_at_recall, depth=FLAGS.n_charac, name='Target')
     Y = tf.boolean_mask(target_sequence, recall_charac_mask, name='Target')
-    Y = tf.cast(Y, tf.float32)
 
     # MTP models do not use controller (modulator) population for output
     out_neurons = z_all
@@ -453,17 +452,21 @@ with tf.name_scope('RecallLoss'):
     Y_predict_sigm = tf.sigmoid(Y_predict)
 
     # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
-    # loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=Y,
-    # loss_recall = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y, logits=Y_predict))
     # loss_recall = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=Y_predict))
-    loss_recall = Y * -tf.log(Y_predict_sigm + epsilon) + (1 - Y) * -tf.log(1 - (Y_predict_sigm + epsilon))
+    if FLAGS.onehot:
+        target_nums_at_recall = tf.boolean_mask(target_sequence, recall_charac_mask)
+        target_nums_at_recall = tf.argmax(target_nums_at_recall, axis=1)
+        loss_recall = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_nums_at_recall, logits=Y_predict)
+    else:
+        Y = tf.cast(Y, tf.float32)
+        loss_recall = Y * -tf.log(Y_predict_sigm + epsilon) + (1 - Y) * -tf.log(1 - (Y_predict_sigm + epsilon))
     loss_recall = tf.reduce_mean(loss_recall)
 
     with tf.name_scope('PlotNodes'):
-        out_plot = tf.sigmoid(out)
+        out_plot = tf.nn.softmax(out) if FLAGS.onehot else tf.sigmoid(out)
         out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
-    recall_acc, recall_errors, per_bit_accuracy, per_bit_error = storerecall_error(Y_predict, Y)
+    recall_acc, recall_errors, per_bit_accuracy, per_bit_error, per_word_error, _ = storerecall_error(Y_predict, Y)
 
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
@@ -567,7 +570,9 @@ if FLAGS.do_plot:
 test_loss_list = []
 test_loss_with_reg_list = []
 validation_error_list = []
+validation_word_error_list = []
 train_errors = [1.]
+train_word_errors = [1.]
 tau_delay_list = []
 training_time_list = []
 time_to_ref_list = []
@@ -576,6 +581,7 @@ results_tensors = {
     'loss_reg': loss_reg,
     'loss_recall': loss_recall,
     'recall_errors': recall_errors,
+    'word_errors': per_word_error,
     'final_state': final_state,
     'av': av,
     'adaptive_regularization_coeff': adaptive_regularization_coeff,
@@ -633,13 +639,15 @@ for k_iter in range(FLAGS.n_iter):
     train_dict = get_data_dict(FLAGS.batch_train)
     feed_dict_with_placeholder_container(train_dict, init_state_holder, last_final_state_state_training_pointer[0])
     t0 = time()
-    final_state_value, _, _, train_error, train_bit_error, plot_results_values = sess.run(
-        [final_state, train_step, update_regularization_coeff, recall_errors, per_bit_error, plot_result_tensors],
+    final_state_value, _, _, train_error, train_bit_error, train_word_error, plot_results_values = sess.run(
+        [final_state, train_step, update_regularization_coeff, recall_errors,
+         per_bit_error, per_word_error, plot_result_tensors],
         feed_dict=train_dict)
     if FLAGS.preserve_state:
         last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
     train_errors.append(train_error)
+    train_word_errors.append(train_word_error)
 
     # Monitor the training with a validation set
     t0 = time()
@@ -656,14 +664,17 @@ for k_iter in range(FLAGS.n_iter):
     test_loss_with_reg_list.append(results_values['loss_reg'])
     test_loss_list.append(results_values['loss_recall'])
     validation_error_list.append(results_values['recall_errors'])
+    validation_word_error_list.append(results_values['word_errors'])
     training_time_list.append(t_train)
     time_to_ref_list.append(time() - t_ref)
 
     if np.mod(k_iter, print_every) == 0:
 
-        print('''Iteration {}, average error on the train set {:.2g} and test set {:.2g} +- {:.2g} (trial averaged)'''
-              .format(k_iter, np.mean(train_errors[-print_every:]), np.mean(validation_error_list[-print_every:]),
-                      np.std(validation_error_list[-print_every:])))
+        print(("Iter {}, avg.error on the train set BIT: {:.2g} WORD: {:.2g} and "
+               "test set BIT: {:.2g} +- {:.2g} WORD: {:.2g}")
+              .format(k_iter, np.mean(train_errors[-print_every:]), np.mean(train_word_errors[-print_every:]),
+                      np.mean(validation_error_list[-print_every:]), np.std(validation_error_list[-print_every:]),
+                      np.mean(validation_word_error_list[-print_every:])))
 
         def get_stats(v):
             if np.size(v) == 0:
@@ -681,11 +692,14 @@ for k_iter in range(FLAGS.n_iter):
 
         results = {
             'error': validation_error_list[-1],
+            'word_error': validation_word_error_list[-1],
             'loss': test_loss_list[-1],
             'loss_with_reg': test_loss_with_reg_list[-1],
             'loss_with_reg_list': test_loss_with_reg_list,
             'val_error_list': validation_error_list,
+            'val_word_error_list': validation_word_error_list,
             'train_error_list': train_errors,
+            'train_word_error_list': train_word_errors,
             'loss_list': test_loss_list,
             'time_to_ref': time_to_ref_list,
             'training_time': training_time_list,

@@ -528,16 +528,19 @@ def storerecall_error(output, target):
     """
     Calculate the error of batch. (batch, time (1 or 2), output bits)
     """
+    target = tf.cast(target, tf.float32)
     output = tf.where(output < 0.5, tf.zeros_like(output), tf.ones_like(output))
     output = tf.cast(output, dtype=tf.float32)
     # output = tf.Print(output, [output[0], target[0]], message="output, target", summarize=999)
-    bit_accuracy = tf.cast(tf.equal(output, target), tf.float32)
-    per_bit_accuracy = tf.reduce_mean(bit_accuracy, axis=0)
+    bit_accuracy = tf.equal(output, target)
+    per_word_acc = tf.reduce_mean(tf.cast(tf.reduce_all(bit_accuracy, axis=1), dtype=tf.float32), axis=0)
+    per_word_error = 1. - per_word_acc
+    per_bit_accuracy = tf.reduce_mean(tf.cast(bit_accuracy, tf.float32), axis=0)
     per_bit_error = 1. - per_bit_accuracy
     mean_bit_accuracy = tf.reduce_mean(per_bit_accuracy)
     mean_bit_error = 1. - mean_bit_accuracy
 
-    return mean_bit_accuracy, mean_bit_error, per_bit_accuracy, per_bit_error
+    return mean_bit_accuracy, mean_bit_error, per_bit_accuracy, per_bit_error, per_word_error, per_word_acc
 
 
 def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac_duration, n_neuron, f0=200 / 1000,
