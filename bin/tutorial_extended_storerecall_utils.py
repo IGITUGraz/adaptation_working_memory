@@ -490,11 +490,13 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
         input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
             batch_size, length, prob_storerecall, value_dict, distractors)
 
-    input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
     n_neuron_per_channel = n_neuron // (n_values * 3)
-    input_rates_batch = np.repeat(input_rates_batch, n_neuron_per_channel, axis=1)
-    input_rates_batch = np.repeat(input_rates_batch, n_charac_duration, axis=2)
+    input_batch = np.repeat(input_batch, n_neuron_per_channel, axis=1)
+    input_batch = np.repeat(input_batch, n_charac_duration, axis=2)
+
+    input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
     input_spikes_batch = generate_poisson_noise_np(input_rates_batch)
+
     # convert data to be of shape (batch, time[, channels])
     input_batch = input_batch.swapaxes(1, 2)
     input_spikes_batch = input_spikes_batch.swapaxes(1, 2)

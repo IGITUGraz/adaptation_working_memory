@@ -104,6 +104,7 @@ tf.app.flags.DEFINE_bool('distractors', False, 'show random inputs during delays
 tf.app.flags.DEFINE_bool('entropy_loss', False, 'include entropy in the loss')
 tf.app.flags.DEFINE_bool('b_out', False, 'include bias in readout')
 tf.app.flags.DEFINE_bool('onehot', False, 'use onehot style input')
+tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -381,17 +382,6 @@ save_file(flag_dict, full_path, 'flags', file_type='json')
 
 def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None, test=False):
     p_sr = 1/(1 + FLAGS.seq_delay)
-    # spk_data, is_recall_data, target_seq_data, memory_seq_data, in_data, target_data = generate_storerecall_data(
-    #     batch_size=batch_size,
-    #     f0=input_f0,
-    #     sentence_length=seq_len,
-    #     n_character=FLAGS.n_charac,
-    #     n_charac_duration=FLAGS.tau_char,
-    #     n_neuron=FLAGS.n_in,
-    #     prob_signals=p_sr,
-    #     with_prob=True,
-    #     override_input=override_input,
-    # )
     spk_data, input_data, target_seq_data, is_recall_data = generate_spiking_storerecall_batch(
         batch_size=batch_size, length=seq_len, prob_storerecall=p_sr,
         value_dict=(test_value_dict if test else None) if not FLAGS.onehot else None,
@@ -406,7 +396,7 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
         onehot=FLAGS.onehot,
     )
     # data_dict = {input_spikes: spk_data, input_nums: in_data, target_nums: target_data,
-    data_dict = {input_spikes: spk_data,
+    data_dict = {input_spikes: spk_data if not FLAGS.analog_in else input_data,
                  recall_charac_mask: is_recall_data,
                  target_sequence: target_seq_data, batch_size_holder: batch_size}
 
