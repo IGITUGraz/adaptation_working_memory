@@ -103,6 +103,7 @@ tf.app.flags.DEFINE_bool('ramping_learning_rate', True, 'ramp up learning rate i
 tf.app.flags.DEFINE_bool('distractors', False, 'show random inputs during delays')
 tf.app.flags.DEFINE_bool('entropy_loss', False, 'include entropy in the loss')
 tf.app.flags.DEFINE_bool('b_out', False, 'include bias in readout')
+tf.app.flags.DEFINE_bool('onehot', False, 'use onehot style input')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -367,13 +368,14 @@ target_sequence = tf.placeholder(dtype=tf.int64, shape=(None, None, FLAGS.n_char
 batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that contains the batch size
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
 
-train_value_dict, test_value_dict = generate_value_dicts(
-    n_values=FLAGS.n_charac,
-    train_dict_size=FLAGS.train_dict_size, test_dict_size=FLAGS.test_dict_size,
-    max_prob_active=FLAGS.max_in_bit_prob,
-    min_hamming_dist=FLAGS.min_hamming_dist)
-save_file({"train_value_dict": train_value_dict, "test_value_dict": test_value_dict},
-          full_path, 'value_dicts', file_type='json')
+if not FLAGS.onehot:
+    train_value_dict, test_value_dict = generate_value_dicts(
+        n_values=FLAGS.n_charac,
+        train_dict_size=FLAGS.train_dict_size, test_dict_size=FLAGS.test_dict_size,
+        max_prob_active=FLAGS.max_in_bit_prob,
+        min_hamming_dist=FLAGS.min_hamming_dist)
+    save_file({"train_value_dict": train_value_dict, "test_value_dict": test_value_dict},
+              full_path, 'value_dicts', file_type='json')
 save_file(flag_dict, full_path, 'flags', file_type='json')
 
 
@@ -392,14 +394,16 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
     # )
     spk_data, input_data, target_seq_data, is_recall_data = generate_spiking_storerecall_batch(
         batch_size=batch_size, length=seq_len, prob_storerecall=p_sr,
-        value_dict=test_value_dict if test else None,
+        value_dict=(test_value_dict if test else None) if not FLAGS.onehot else None,
         n_charac_duration=FLAGS.tau_char,
         n_neuron=FLAGS.n_in,
         f0=FLAGS.f0 / 1000,  # convert frequency in Hz to kHz or probability of firing every dt=1ms step
-        test_dict=test_value_dict,
-        max_prob_active=FLAGS.max_in_bit_prob,
-        min_hamming_dist=FLAGS.min_hamming_dist,
+        test_dict=test_value_dict if not FLAGS.onehot else None,
+        max_prob_active=FLAGS.max_in_bit_prob if not FLAGS.onehot else None,
+        min_hamming_dist=FLAGS.min_hamming_dist if not FLAGS.onehot else None,
         distractors=FLAGS.distractors,
+        n_values=FLAGS.n_charac if FLAGS.onehot else None,
+        onehot=FLAGS.onehot,
     )
     # data_dict = {input_spikes: spk_data, input_nums: in_data, target_nums: target_data,
     data_dict = {input_spikes: spk_data,

@@ -318,6 +318,78 @@ def remove_consecutive_same_numbers(sequence, max_num):
     return sequence
 
 
+def onehot(idx_array):
+    onehot_array = np.zeros((idx_array.size, idx_array.max() + 1))  # appropriately sized zero array
+    onehot_array[np.arange(idx_array.size), idx_array] = 1  # index columns and set
+    return onehot_array
+
+
+def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_values, distractors):
+    """
+    Given the number of one-hot input channels for generate a batch of store-recall sequences
+    with specified probability of store/recall
+    :param batch_size: size of mini-batch
+    :param length: length of sequences
+    :param prob_storerecall: probability of store/recall signal
+    :param value_dict: dictionary of binary words to use
+    :return: mini-batch of store-recall sequences (batch_size, channels, length)
+    """
+    input_batch = []
+    target_batch = []
+    output_mask_batch = []
+    words_idxs = [i for i in range(n_values)]
+    value_dict = onehot(np.array(words_idxs))
+    word_count = 0
+    # words_batch_stats = {i: 0 for i in range(value_dict.shape[0])}
+    for b in range(batch_size):
+        # generate valid store/recall signals by probability
+        storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
+        word_sequence_choice = np.random.choice(n_values, length)
+
+        # optionally we make sure there are no same consecutive words
+        word_sequence_choice = remove_consecutive_same_numbers(word_sequence_choice, n_values)
+
+        # ensure that the stored words are balanced in the batch (similar number of each word stored)
+        store_sequence = storerecall_sequence[0]
+        store_idxs = np.nonzero(store_sequence)[0]  # store step idxs (only one dimension so taking [0]
+        for si in store_idxs:
+            word_sequence_choice[si] = words_idxs[word_count % len(words_idxs)]  # different word per sequence
+            word_count += 1
+
+        if distractors:
+            values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
+        else:
+            values_sequence = np.array(value_dict[word_sequence_choice])
+            values_sequence_z = np.zeros_like(values_sequence)
+            for si in store_idxs:
+                values_sequence_z[si] = value_dict[word_sequence_choice[si]]
+            values_sequence = values_sequence_z.swapaxes(0, 1)
+
+        # if b == 0:
+        #     print(word_sequence_choice)
+        #     print("actual words in sequence")
+        #     print(values_sequence)
+        repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
+        inv_values_sequence = 1 - values_sequence
+        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence, inv_values_sequence))
+        # input_sequence.shape = (channels, length)
+        target_sequence = np.zeros_like(values_sequence)
+        for step in range(length):
+            store_seq = storerecall_sequence[0]
+            recall_seq = storerecall_sequence[1]
+            if store_seq[step] == 1:
+                next_target = values_sequence[:, step]
+            if recall_seq[step] == 1:
+                target_sequence[:, step] = next_target
+                input_sequence[n_values:, step] = 0
+
+        input_batch.append(input_sequence)
+        target_batch.append(target_sequence)
+        output_mask_batch.append(storerecall_sequence[1])
+    # print("batch stats (instances of words stored)", words_batch_stats)
+    return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch)
+
+
 def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict, distractors):
     """
     Given the value dictionary generate a batch of store-recall sequences with specified probability of store/recall
@@ -383,36 +455,41 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
 
 
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
-                                       n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors):
-    n_values = test_dict[0].shape[0]  # number of bits in a value (width of value word)
-    n_random_words = 2 * n_values if n_values >= 10 else n_values
-    if value_dict is None:
-        common_dict = []
-        # pbar = tqdm(total=n_random_words)
-        while len(common_dict) < n_random_words:  # n_random_words random train words
-            test_candidate = random_binary_word(n_values, max_prob_active)
-            valid = True
-            for word in test_dict:  # make sure sufficiently different from test words
-                if hamming2(word, test_candidate) <= min_hamming_dist:
-                    valid = False
-                    break
-            if valid:
-                for word in common_dict:  # make sure sufficiently different from train words
+                                       n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors,
+                                       n_values, onehot=False):
+    if onehot:
+        assert n_neuron % (n_values * 3) == 0,\
+            "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
+        input_batch, target_batch, output_mask_batch = generate_onehot_storerecall_batch(
+            batch_size, length, prob_storerecall, n_values, distractors)
+    else:
+        n_values = test_dict[0].shape[0]  # number of bits in a value (width of value word)
+        assert n_neuron % (n_values * 3) == 0,\
+            "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
+        n_random_words = 2 * n_values if n_values >= 10 else n_values
+        if value_dict is None:
+            common_dict = []
+            # pbar = tqdm(total=n_random_words)
+            while len(common_dict) < n_random_words:  # n_random_words random train words
+                test_candidate = random_binary_word(n_values, max_prob_active)
+                valid = True
+                for word in test_dict:  # make sure sufficiently different from test words
                     if hamming2(word, test_candidate) <= min_hamming_dist:
                         valid = False
                         break
-            if valid:
-                common_dict.append(test_candidate)
-                # pbar.update(1)
-        # pbar.close()
-        value_dict = np.array(common_dict)
-        # print("TRAIN DICT", value_dict)
-    # else:
-    #     print("TEST DICT", value_dict)
-    assert n_neuron % (n_values * 3) == 0,\
-        "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
-    input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
-        batch_size, length, prob_storerecall, value_dict, distractors)
+                if valid:
+                    for word in common_dict:  # make sure sufficiently different from train words
+                        if hamming2(word, test_candidate) <= min_hamming_dist:
+                            valid = False
+                            break
+                if valid:
+                    common_dict.append(test_candidate)
+                    # pbar.update(1)
+            # pbar.close()
+            value_dict = np.array(common_dict)
+        input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
+            batch_size, length, prob_storerecall, value_dict, distractors)
+
     input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
     n_neuron_per_channel = n_neuron // (n_values * 3)
     input_rates_batch = np.repeat(input_rates_batch, n_neuron_per_channel, axis=1)
