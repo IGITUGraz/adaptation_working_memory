@@ -345,6 +345,7 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
     value_dict = onehot(np.array(words_idxs))
     word_count = 0
     # words_batch_stats = {i: 0 for i in range(value_dict.shape[0])}
+    store_signal_to_batch_map = []
     for b in range(batch_size):
         # generate valid store/recall signals by probability
         storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
@@ -359,6 +360,7 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
         for si in store_idxs:
             word_sequence_choice[si] = words_idxs[word_count % len(words_idxs)]  # different word per sequence
             word_count += 1
+            store_signal_to_batch_map.append(b)
 
         if distractors:
             values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
@@ -391,7 +393,7 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
         target_batch.append(target_sequence)
         output_mask_batch.append(storerecall_sequence[1])
     # print("batch stats (instances of words stored)", words_batch_stats)
-    return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch)
+    return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch), store_signal_to_batch_map
 
 
 def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict, distractors):
@@ -410,6 +412,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
     words_idxs = [i for i in range(value_dict.shape[0])]
     word_count = 0
     # words_batch_stats = {i: 0 for i in range(value_dict.shape[0])}
+    store_signal_to_batch_map = []
     for b in range(batch_size):
         # generate valid store/recall signals by probability
         storerecall_sequence = generate_storerecall_signals_with_prob(length, prob_storerecall)
@@ -424,6 +427,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         for si in store_idxs:
             word_sequence_choice[si] = words_idxs[word_count % len(words_idxs)]  # different word per sequence
             word_count += 1
+            store_signal_to_batch_map.append(b)
 
         if distractors:
             values_sequence = np.array(value_dict[word_sequence_choice]).swapaxes(0, 1)
@@ -455,7 +459,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         target_batch.append(target_sequence)
         output_mask_batch.append(storerecall_sequence[1])
     # print("batch stats (instances of words stored)", words_batch_stats)
-    return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch)
+    return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch), store_signal_to_batch_map
 
 
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
@@ -464,7 +468,7 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
     if onehot:
         assert n_neuron % (n_values * 3) == 0,\
             "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
-        input_batch, target_batch, output_mask_batch = generate_onehot_storerecall_batch(
+        input_batch, target_batch, output_mask_batch, store_signal_to_batch_map = generate_onehot_storerecall_batch(
             batch_size, length, prob_storerecall, n_values, distractors)
     else:
         n_values = test_dict[0].shape[0]  # number of bits in a value (width of value word)
@@ -491,7 +495,7 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
                     # pbar.update(1)
             # pbar.close()
             value_dict = np.array(common_dict)
-        input_batch, target_batch, output_mask_batch = generate_symbolic_storerecall_batch(
+        input_batch, target_batch, output_mask_batch, store_signal_to_batch_map = generate_symbolic_storerecall_batch(
             batch_size, length, prob_storerecall, value_dict, distractors)
 
     n_neuron_per_channel = n_neuron // (n_values * 3)
@@ -505,7 +509,7 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
     input_batch = input_batch.swapaxes(1, 2)
     input_spikes_batch = input_spikes_batch.swapaxes(1, 2)
     target_batch = target_batch.swapaxes(1, 2)
-    return input_spikes_batch, input_batch, target_batch, output_mask_batch
+    return input_spikes_batch, input_batch, target_batch, output_mask_batch, store_signal_to_batch_map
 
 
 # def debug_plot_spiking_input_generation():
@@ -602,7 +606,8 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
 
     failed_batches = plot_result_values['failed_store_idxs']
     if batch is None and len(failed_batches) > 0:
-        batch = failed_batches[0][0]
+        store_signal_to_batch_map = plot_result_values['store_signal_to_batch_map_holder']
+        batch = store_signal_to_batch_map[failed_batches[0][0]]
         ax_list[0].set_title("Failed batch " + str(batch))
 
     subsample_input = FLAGS.n_per_channel

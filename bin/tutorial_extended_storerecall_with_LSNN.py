@@ -372,6 +372,7 @@ input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, FLAGS.n_in), 
 recall_charac_mask = tf.placeholder(dtype=tf.bool, shape=(None, None), name='RecallMask')
 target_sequence = tf.placeholder(dtype=tf.int64, shape=(None, None, FLAGS.n_charac), name='TargetSequence')
 batch_size_holder = tf.placeholder(dtype=tf.int32, name='BatchSize')  # Int that contains the batch size
+store_signal_to_batch_map_holder = tf.placeholder(shape=(None), dtype=tf.int32, name='StoreBatchMap')
 init_state_holder = placeholder_container_for_rnn_state(cell.state_size, dtype=tf.float32, batch_size=None)
 
 if not FLAGS.onehot:
@@ -387,22 +388,23 @@ save_file(flag_dict, full_path, 'flags', file_type='json')
 
 def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=None, test=False):
     p_sr = 1/(1 + FLAGS.seq_delay)
-    spk_data, input_data, target_seq_data, is_recall_data = generate_spiking_storerecall_batch(
-        batch_size=batch_size, length=seq_len, prob_storerecall=p_sr,
-        value_dict=(test_value_dict if test else None) if not FLAGS.onehot else None,
-        n_charac_duration=FLAGS.tau_char,
-        n_neuron=FLAGS.n_in,
-        f0=FLAGS.f0 / 1000,  # convert frequency in Hz to kHz or probability of firing every dt=1ms step
-        test_dict=test_value_dict if not FLAGS.onehot else None,
-        max_prob_active=FLAGS.max_in_bit_prob if not FLAGS.onehot else None,
-        min_hamming_dist=FLAGS.min_hamming_dist if not FLAGS.onehot else None,
-        distractors=FLAGS.distractors,
-        n_values=FLAGS.n_charac if FLAGS.onehot else None,
-        onehot=FLAGS.onehot,
-    )
+    spk_data, input_data, target_seq_data, is_recall_data, store_signal_to_batch_map = \
+        generate_spiking_storerecall_batch(
+            batch_size=batch_size, length=seq_len, prob_storerecall=p_sr,
+            value_dict=(test_value_dict if test else None) if not FLAGS.onehot else None,
+            n_charac_duration=FLAGS.tau_char,
+            n_neuron=FLAGS.n_in,
+            f0=FLAGS.f0 / 1000,  # convert frequency in Hz to kHz or probability of firing every dt=1ms step
+            test_dict=test_value_dict if not FLAGS.onehot else None,
+            max_prob_active=FLAGS.max_in_bit_prob if not FLAGS.onehot else None,
+            min_hamming_dist=FLAGS.min_hamming_dist if not FLAGS.onehot else None,
+            distractors=FLAGS.distractors,
+            n_values=FLAGS.n_charac if FLAGS.onehot else None,
+            onehot=FLAGS.onehot,
+        )
     # data_dict = {input_spikes: spk_data, input_nums: in_data, target_nums: target_data,
     data_dict = {input_spikes: spk_data if not FLAGS.analog_in else input_data,
-                 recall_charac_mask: is_recall_data,
+                 recall_charac_mask: is_recall_data, store_signal_to_batch_map_holder: store_signal_to_batch_map,
                  target_sequence: target_seq_data, batch_size_holder: batch_size}
 
     return data_dict
@@ -605,6 +607,7 @@ plot_result_tensors = {
     'Y': Y,
     'Y_predict': Y_predict,
     'failed_store_idxs': failed_store_idxs,
+    'store_signal_to_batch_map_holder': store_signal_to_batch_map_holder,
 }
 if FLAGS.model == 'lsnn':
     plot_result_tensors['b_con'] = b_con
