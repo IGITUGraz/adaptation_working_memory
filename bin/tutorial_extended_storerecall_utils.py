@@ -526,23 +526,34 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
 #     plt.pause(1)
 
 
-def storerecall_error(output, target):
+def storerecall_error(output, target, onehot=False):
     """
     Calculate the error of batch. (batch, time (1 or 2), output bits)
+    :param output: readout of network at relevant (recall) timesteps
+    :param target: if onehot: list of integers (labels) else: list of binary strings at relevant timesteps
+    :param onehot: flag if the input is one hot encoded
+    :return:
     """
-    target = tf.cast(target, tf.float32)
-    output = tf.where(output < 0.5, tf.zeros_like(output), tf.ones_like(output))
-    output = tf.cast(output, dtype=tf.float32)
+    if onehot:
+        output = tf.argmax(output, axis=1)
+    else:
+        output = tf.where(output < 0.5, tf.zeros_like(output), tf.ones_like(output))
+    # target = tf.cast(target, dtype=tf.float32)
+    # output = tf.cast(output, dtype=tf.float32)
     # output = tf.Print(output, [output[0], target[0]], message="output, target", summarize=999)
     bit_accuracy = tf.equal(output, target)
-    per_word_acc = tf.reduce_mean(tf.cast(tf.reduce_all(bit_accuracy, axis=1), dtype=tf.float32), axis=0)
+    per_word_acc = bit_accuracy if onehot else tf.reduce_all(bit_accuracy, axis=1)
+    failed_store_idxs = tf.where(tf.logical_not(per_word_acc))
+    per_word_acc = tf.cast(per_word_acc, dtype=tf.float32)
+    per_word_acc = tf.reduce_mean(per_word_acc, axis=0)
     per_word_error = 1. - per_word_acc
     per_bit_accuracy = tf.reduce_mean(tf.cast(bit_accuracy, tf.float32), axis=0)
     per_bit_error = 1. - per_bit_accuracy
     mean_bit_accuracy = tf.reduce_mean(per_bit_accuracy)
     mean_bit_error = 1. - mean_bit_accuracy
 
-    return mean_bit_accuracy, mean_bit_error, per_bit_accuracy, per_bit_error, per_word_error, per_word_acc
+    return mean_bit_accuracy, mean_bit_error, per_bit_accuracy, per_bit_error,\
+           per_word_error, per_word_acc, failed_store_idxs
 
 
 def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac_duration, n_neuron, f0=200 / 1000,
@@ -579,6 +590,17 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
     It plots the data for a fixed sequence that should be representative of the expected computation
     :return:
     """
+    # Clear the axis to print new plots
+    for k in range(ax_list.shape[0]):
+        ax = ax_list[k]
+        ax.clear()
+        strip_right_top_axis(ax)
+
+    failed_batches = plot_result_values['failed_store_idxs']
+    if batch is None and len(failed_batches) > 0:
+        batch = failed_batches[0][0]
+        ax_list[0].set_title("Failed batch " + str(batch))
+
     subsample_input = FLAGS.n_per_channel
     subsample_rnn = FLAGS.n_per_channel
     ylabel_x = -0.11
@@ -586,12 +608,6 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
     fs = 10
     plt.rcParams.update({'font.size': fs})
     batch = np.random.randint(FLAGS.batch_train) if batch is None else batch
-
-    # Clear the axis to print new plots
-    for k in range(ax_list.shape[0]):
-        ax = ax_list[k]
-        ax.clear()
-        strip_right_top_axis(ax)
 
     top_margin = 0.08
     left_margin = -0.085
@@ -615,7 +631,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
     # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
     z = plot_result_values['z']
     raster_data = \
-        zip(range(3), [plot_result_values['input_spikes'], z, z], ['input', 'LIF', 'ALIF']) if FLAGS.n_regular > 0 else \
+        zip(range(3), [plot_result_values['input_spikes'], z, z], ['input', 'LIF', 'ALIF']) if FLAGS.n_regular > 0 else\
         zip(range(2), [plot_result_values['input_spikes'], z], ['input', 'ALIF'])
 
     for k_data, data, d_name in raster_data:
@@ -640,26 +656,30 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
                 # ax.set_yticklabels(['1', max_y_tick_label])
                 continue
 
-            n_max = min(data.shape[1], n_max_neuron_per_raster)
-            cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
-            data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
-            raster_plot(ax, data, linewidth=0.15)
+            if FLAGS.model != 'lstm':
+                n_max = min(data.shape[1], n_max_neuron_per_raster)
+                cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
+                data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
+                raster_plot(ax, data, linewidth=0.15)
+            else:
+                ax.imshow(data.T, origin='lower', aspect='auto', interpolation='none')
             ax.set_ylabel(d_name, fontsize=fs)
             ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
             ax.set_yticklabels(['1', str(data.shape[-1])])
 
-    ax = ax_list[-2]
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('thresholds of A', fontsize=fs)
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    sub_data = plot_result_values['b_con'][batch]
-    vars = np.var(sub_data, axis=0)
-    cell_with_max_var = np.argsort(vars)[::-1]
-    presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, cell_with_max_var], color='r', alpha=0.4, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
-             np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
-    hide_bottom_axis(ax)
+    if FLAGS.model != 'lstm':
+        ax = ax_list[-2]
+        # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+        ax.set_ylabel('thresholds of A', fontsize=fs)
+        ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+        sub_data = plot_result_values['b_con'][batch]
+        vars = np.var(sub_data, axis=0)
+        cell_with_max_var = np.argsort(vars)[::-1]
+        presentation_steps = np.arange(sub_data.shape[0])
+        ax.plot(sub_data[:, cell_with_max_var], color='r', alpha=0.4, linewidth=1)
+        ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
+                 np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
+        hide_bottom_axis(ax)
 
     # plot targets
     ax = ax_list[-1]

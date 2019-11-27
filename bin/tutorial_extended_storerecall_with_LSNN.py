@@ -37,7 +37,7 @@ FLAGS = tf.app.flags.FLAGS
 start_time = datetime.datetime.now()
 
 ##
-tf.app.flags.DEFINE_string('model', None, 'lsnn or stp')
+tf.app.flags.DEFINE_string('model', 'lsnn', 'lsnn or stp')
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_A, ...]')
 tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
@@ -60,7 +60,7 @@ tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 20, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 10, 'Expected delay in character steps. Must be <= seq_len - 2')
-tf.app.flags.DEFINE_integer('tau_char', 200, 'Duration of symbols')
+tf.app.flags.DEFINE_integer('tau_char', 100, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
@@ -109,7 +109,7 @@ tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
 if FLAGS.reproduce == 'debug':
-    FLAGS.model = 'lsnn'
+    # FLAGS.model = 'lsnn'
     # FLAGS.beta = 1
     # FLAGS.thr = 0.01
     FLAGS.seq_len = 10
@@ -123,7 +123,7 @@ if FLAGS.reproduce == 'debug':
     # FLAGS.max_in_bit_prob = 0.5
     # FLAGS.learning_rate = 0.01
 
-    FLAGS.tau_char = 100
+    # FLAGS.tau_char = 100
     # FLAGS.tau_out = 50
     # FLAGS.n_regular = 100
     # FLAGS.n_adaptive = 100
@@ -246,7 +246,7 @@ if FLAGS.batch_val is None:
 if FLAGS.batch_test is None:
     FLAGS.batch_test = FLAGS.batch_train
 
-assert FLAGS.model in ['lsnn', 'stp']
+assert FLAGS.model in ['lsnn', 'stp', 'lstm']
 
 
 def custom_seqence():
@@ -335,7 +335,7 @@ if FLAGS.model == 'lsnn':
                 in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
                 dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
                 )
-else:
+elif FLAGS.model == 'stp':
     cell = STP(
         n_in=FLAGS.n_in, n_rec=n_total_neurons, tau=tau_v,
         n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
@@ -344,11 +344,16 @@ else:
         dampening_factor=FLAGS.dampening_factor,
         tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
     )
+elif FLAGS.model == 'lstm':
+    cell = tf.contrib.rnn.LSTMCell(n_total_neurons, forget_bias=1.0)
+else:
+    raise ValueError("Unknown model: " + FLAGS.model)
 
-# balance the input weights of store-recall signals with the rest of the bits
-sr_win_coeff = FLAGS.n_charac
-increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*FLAGS.n_charac, :],
-                                cell.w_in_init[:FLAGS.n_per_channel*FLAGS.n_charac, :] * sr_win_coeff)
+if FLAGS.model != 'lstm':
+    # balance the input weights of store-recall signals with the rest of the bits
+    sr_win_coeff = FLAGS.n_charac
+    increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*FLAGS.n_charac, :],
+                                    cell.w_in_init[:FLAGS.n_per_channel*FLAGS.n_charac, :] * sr_win_coeff)
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
@@ -407,8 +412,10 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
 z_stack, final_state = tf.nn.dynamic_rnn(cell, input_spikes, initial_state=init_state_holder, dtype=tf.float32)
 if FLAGS.model == 'lsnn':
     z, b_con = z_stack
-else:
+elif FLAGS.model == 'stp':
     z, stp_u, stp_x = z_stack
+elif FLAGS.model == 'lstm':
+    z = z_stack
 z_con = []
 z_all = z
 
@@ -456,7 +463,8 @@ with tf.name_scope('RecallLoss'):
         out_plot = tf.nn.softmax(out) if FLAGS.onehot else tf.sigmoid(out)
         out_plot_char_step = tf_downsample(out_plot, new_size=FLAGS.seq_len, axis=1)
 
-    recall_acc, recall_errors, per_bit_accuracy, per_bit_error, per_word_error, _ = storerecall_error(Y_predict, Y)
+    recall_acc, recall_errors, per_bit_accuracy, per_bit_error, per_word_error, _, failed_store_idxs = \
+        storerecall_error(Y_predict, target_nums_at_recall if FLAGS.onehot else Y, onehot=FLAGS.onehot)
 
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
@@ -575,14 +583,14 @@ results_tensors = {
     'final_state': final_state,
     'av': av,
     'adaptive_regularization_coeff': adaptive_regularization_coeff,
-    'w_in_val': cell.w_in_val,
-    'w_rec_val': cell.w_rec_val,
     'w_out': w_out,
 }
-
-w_in_last = sess.run(cell.w_in_val)
-w_rec_last = sess.run(cell.w_rec_val)
-w_out_last = sess.run(w_out)
+if FLAGS.model != 'lstm':
+    results_tensors['w_in_val'] = cell.w_in_val
+    results_tensors['w_rec_val'] = cell.w_rec_val
+    w_in_last = sess.run(cell.w_in_val)
+    w_rec_last = sess.run(cell.w_rec_val)
+    w_out_last = sess.run(w_out)
 
 plot_result_tensors = {
     'input_spikes': input_spikes,
@@ -596,10 +604,11 @@ plot_result_tensors = {
     'recall_charac_mask': recall_charac_mask,
     'Y': Y,
     'Y_predict': Y_predict,
+    'failed_store_idxs': failed_store_idxs,
 }
 if FLAGS.model == 'lsnn':
     plot_result_tensors['b_con'] = b_con
-else:
+elif FLAGS.model == 'stp':
     plot_result_tensors['stp_u'] = stp_u
     plot_result_tensors['stp_x'] = stp_x
 
@@ -633,6 +642,7 @@ for k_iter in range(FLAGS.n_iter):
         [final_state, train_step, update_regularization_coeff, recall_errors,
          per_bit_error, per_word_error, plot_result_tensors],
         feed_dict=train_dict)
+    # print(plot_results_values['failed_store_idxs'])
     if FLAGS.preserve_state:
         last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
@@ -755,7 +765,7 @@ for k_iter in range(FLAGS.n_iter):
             w_out_last = results_values['w_out']
 
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            if FLAGS.model == 'lsnn':
+            if FLAGS.model in ['lsnn', 'lstm']:
                 update_plot(plt, ax_list, FLAGS, plot_results_values)
             else:
                 update_stp_plot(plt, ax_list, FLAGS, plot_results_values)
@@ -763,13 +773,13 @@ for k_iter in range(FLAGS.n_iter):
                                     'fig_train_' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
             fig.savefig(tmp_path, format='pdf')
-        if np.mean(validation_error_list[-print_every:]) < smallest_error:
-            smallest_error = np.mean(validation_error_list[-print_every:])
+        if np.mean(validation_word_error_list[-print_every:]) < smallest_error:
+            smallest_error = np.mean(validation_word_error_list[-print_every:])
             # Save the tensorflow graph
             saver.save(sess, os.path.join(full_path, 'model'))
             saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
 
-        if np.mean(validation_error_list[-print_every:]) < FLAGS.stop_crit:
+        if np.mean(validation_word_error_list[-print_every:]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
             break
 
@@ -802,7 +812,7 @@ if FLAGS.save_data:
         save_file(plot_custom_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
         if FLAGS.do_plot and FLAGS.monitor_plot:
             for batch in range(10):  # FLAGS.batch_test
-                if FLAGS.model == 'lsnn':
+                if FLAGS.model in ['lsnn', 'lstm']:
                     update_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
                 else:
                     update_stp_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
@@ -823,7 +833,7 @@ if FLAGS.save_data:
         test_errors.append(results_values['recall_errors'])
 
     if FLAGS.do_plot and FLAGS.monitor_plot:
-        if FLAGS.model == 'lsnn':
+        if FLAGS.model in ['lsnn', 'lstm']:
             update_plot(plt, ax_list, FLAGS, plot_results_values)
         else:
             update_stp_plot(plt, ax_list, FLAGS, plot_results_values)
