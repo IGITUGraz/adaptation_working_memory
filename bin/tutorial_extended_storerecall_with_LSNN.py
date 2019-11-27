@@ -102,6 +102,7 @@ tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between
 tf.app.flags.DEFINE_bool('ramping_learning_rate', True, 'ramp up learning rate in first 100 steps')
 tf.app.flags.DEFINE_bool('distractors', False, 'show random inputs during delays')
 tf.app.flags.DEFINE_bool('entropy_loss', False, 'include entropy in the loss')
+tf.app.flags.DEFINE_bool('b_out', False, 'include bias in readout')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -435,9 +436,13 @@ with tf.name_scope('RecallLoss'):
                                                          neuron_sign=rec_neuron_sign)
     else:
         w_out = tf.get_variable(name='out_weight', shape=[n_neurons, FLAGS.n_charac])
-    # b_out = tf.Variable(tf.zeros([FLAGS.n_charac]), name='out_bias')
 
-    out = einsum_bij_jk_to_bik(psp, w_out)# + b_out
+    if FLAGS.b_out:
+        b_out = tf.Variable(tf.zeros([FLAGS.n_charac]), name='out_bias')
+        out = einsum_bij_jk_to_bik(psp, w_out) + b_out
+    else:
+        out = einsum_bij_jk_to_bik(psp, w_out)
+
     # out_char_step = tf_downsample(out, new_size=FLAGS.seq_len, axis=1)
     out_char_step = out[:, FLAGS.tau_char//2::FLAGS.tau_char]  # take middle ms of every word step
     Y_predict = tf.boolean_mask(out_char_step, recall_charac_mask, name='Prediction')
@@ -558,6 +563,7 @@ if FLAGS.do_plot:
 test_loss_list = []
 test_loss_with_reg_list = []
 validation_error_list = []
+train_errors = [1.]
 tau_delay_list = []
 training_time_list = []
 time_to_ref_list = []
@@ -605,7 +611,7 @@ ramping_learning_rate_op = tf.assign(learning_rate,
                                      FLAGS.learning_rate * ramping_learning_rate_values[clipped_global_step])
 
 smallest_error = 999.
-train_errors = [1.]
+
 train_bit_error = None
 t_train = 0
 t_ref = time()
@@ -674,7 +680,8 @@ for k_iter in range(FLAGS.n_iter):
             'loss': test_loss_list[-1],
             'loss_with_reg': test_loss_with_reg_list[-1],
             'loss_with_reg_list': test_loss_with_reg_list,
-            'error_list': validation_error_list,
+            'val_error_list': validation_error_list,
+            'train_error_list': train_errors,
             'loss_list': test_loss_list,
             'time_to_ref': time_to_ref_list,
             'training_time': training_time_list,
