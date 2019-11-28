@@ -434,7 +434,7 @@ if __name__ == "__main__":
 
     for x, y, dname in [(x_delay_all, y_delay_all, "DELAY"), (x_recall_all, y_recall_all, "RECALL")]:
         parameters = {'kernel': ('linear', 'rbf', 'poly'), 'C': [0.1, 1, 10, 100, 1000, 10000]}
-        svc = svm.SVC(gamma="scale")
+        svc = svm.SVC(gamma="auto")
         clf = GridSearchCV(svc, parameters, cv=5, refit=True, iid=True)
         clf.fit(x, y)
         print("MODEL trained during ", dname)
@@ -445,20 +445,21 @@ if __name__ == "__main__":
 salaj@figipc64 /calc/salaj/repos/LSNN_560 $ python3 bin/activity_information_analysis.py results/tutorial_extended_storerecall_with_LSNN/2019_11_27_17_07_48_ALIF_seqlen10_seqdelay4_in60_R0_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
 Attempting to load model from results/tutorial_extended_storerecall_with_LSNN/2019_11_27_17_07_48_ALIF_seqlen10_seqdelay4_in60_R0_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
 MODEL trained during  DELAY
-score: 0.16428571428571428
-params: {'C': 1, 'kernel': 'rbf'}
+score: 0.1357142857142857
+params: {'kernel': 'linear', 'C': 10}
 MODEL trained during  RECALL
 score: 0.9785714285714285
-params: {'C': 0.1, 'kernel': 'linear'}
+params: {'kernel': 'linear', 'C': 0.1}
+
 
 salaj@figipc64 /calc/salaj/repos/LSNN_560 $ python3 bin/activity_information_analysis.py results/tutorial_extended_storerecall_with_LSNN/2019_11_27_16_33_05_ALIF_seqlen10_seqdelay4_in60_R300_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
 Attempting to load model from results/tutorial_extended_storerecall_with_LSNN/2019_11_27_16_33_05_ALIF_seqlen10_seqdelay4_in60_R300_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
 MODEL trained during  DELAY
-score: 0.16428571428571428
-params: {'kernel': 'rbf', 'C': 1000}
+score: 0.14285714285714285
+params: {'C': 100, 'kernel': 'linear'}
 MODEL trained during  RECALL
-score: 0.9142857142857143
-params: {'kernel': 'rbf', 'C': 10}
+score: 0.9071428571428571
+params: {'C': 10, 'kernel': 'linear'}
 
 
 WITH cv=3:
@@ -473,6 +474,7 @@ params: {'kernel': 'linear', 'C': 0.1}
   % (min_groups, self.n_splits)), Warning)
 MODEL trained during  RECALL
 score: 0.9929577464788732
-params: {'kernel': 'poly', 'C': 1}
+params: {'kernel': 'linear', 'C': 10}
+
 
 """

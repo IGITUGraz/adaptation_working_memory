@@ -781,6 +781,7 @@ for k_iter in range(FLAGS.n_iter):
             # Save the tensorflow graph
             saver.save(sess, os.path.join(full_path, 'model'))
             saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
+            save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
 
         if np.mean(validation_word_error_list[-print_every:]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
@@ -844,7 +845,6 @@ if FLAGS.save_data:
 
     print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {})'''
           .format(np.mean(test_errors), np.std(test_errors), FLAGS.batch_test))
-    save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
 
     # Save test results
     results = {
