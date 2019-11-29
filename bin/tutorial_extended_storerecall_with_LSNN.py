@@ -778,6 +778,7 @@ for k_iter in range(FLAGS.n_iter):
             fig.savefig(tmp_path, format='pdf')
         if np.mean(validation_word_error_list[-print_every:]) < smallest_error:
             smallest_error = np.mean(validation_word_error_list[-print_every:])
+            print("Early stopping checkpoint! Smallest validation error so far: " + str(smallest_error))
             # Save the tensorflow graph
             saver.save(sess, os.path.join(full_path, 'model'))
             saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
@@ -796,10 +797,14 @@ if FLAGS.save_data:
 
     results = {
         'error': validation_error_list[-1],
+        'word_error': validation_word_error_list[-1],
         'loss': test_loss_list[-1],
         'loss_with_reg': test_loss_with_reg_list[-1],
         'loss_with_reg_list': test_loss_with_reg_list,
-        'error_list': validation_error_list,
+        'val_error_list': validation_error_list,
+        'val_word_error_list': validation_word_error_list,
+        'train_error_list': train_errors,
+        'train_word_error_list': train_word_errors,
         'loss_list': test_loss_list,
         'time_to_ref': time_to_ref_list,
         'training_time': training_time_list,
