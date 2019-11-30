@@ -42,17 +42,17 @@ tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored result
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_A, ...]')
 tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
-tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
+tf.app.flags.DEFINE_integer('batch_train', 512, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
-tf.app.flags.DEFINE_integer('n_charac', 50, 'number of characters in the recall task')
+tf.app.flags.DEFINE_integer('n_charac', 20, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 200, 'number of spiking input units. Must be divisable by (n_charac*2)')
 tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
-tf.app.flags.DEFINE_integer('train_dict_size', 0, '')
-tf.app.flags.DEFINE_integer('test_dict_size', 10, '')
-tf.app.flags.DEFINE_integer('n_regular', 100, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 100, 'number of controller units')
-tf.app.flags.DEFINE_integer('f0', 200, 'input firing rate')
+tf.app.flags.DEFINE_integer('train_dict_size', 0, 'Not used! (use only a constrained word dictionary for training')
+tf.app.flags.DEFINE_integer('test_dict_size', 10, 'Num. of test dict. words (min_hamming_dist away from training data)')
+tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
+tf.app.flags.DEFINE_integer('n_adaptive', 1000, 'number of controller units')
+tf.app.flags.DEFINE_integer('f0', 500, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 4000, 'number of iterations')
@@ -64,12 +64,12 @@ tf.app.flags.DEFINE_integer('tau_char', 100, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
-tf.app.flags.DEFINE_integer('n_per_channel', 10, 'input spiking neurons per input channel')
+tf.app.flags.DEFINE_integer('n_per_channel', 2, 'input spiking neurons per input channel')
 ##
 tf.app.flags.DEFINE_float('max_in_bit_prob', None, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
-tf.app.flags.DEFINE_float('beta', 1, 'Mikolov adaptive threshold beta scaling parameter')
-tf.app.flags.DEFINE_float('tau_a', 1200, 'Mikolov model alpha - threshold decay')
+tf.app.flags.DEFINE_float('beta', 4, 'Mikolov adaptive threshold beta scaling parameter')
+tf.app.flags.DEFINE_float('tau_a', 800, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
@@ -90,8 +90,7 @@ tf.app.flags.DEFINE_float('tauD', 1200, 'STP tau depression')
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
 tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation time constants')
 tf.app.flags.DEFINE_float('power_exp', 2.5, 'Scale parameter of power distribution')
-tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
-tf.app.flags.DEFINE_bool('do_plot', False, 'Perform plots')
+tf.app.flags.DEFINE_bool('do_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('monitor_plot', True, 'Perform plots during training')
 tf.app.flags.DEFINE_bool('interactive_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
@@ -100,145 +99,36 @@ tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, 'Regularization coefficient incread when avg fr > reg_max_rate')
 tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
 tf.app.flags.DEFINE_bool('ramping_learning_rate', True, 'ramp up learning rate in first 100 steps')
-tf.app.flags.DEFINE_bool('distractors', False, 'show random inputs during delays')
-tf.app.flags.DEFINE_bool('entropy_loss', False, 'include entropy in the loss')
+tf.app.flags.DEFINE_bool('distractors', True, 'show random inputs during delays')
+tf.app.flags.DEFINE_bool('entropy_loss', True, 'include entropy in the loss')
 tf.app.flags.DEFINE_bool('b_out', False, 'include bias in readout')
 tf.app.flags.DEFINE_bool('onehot', False, 'use onehot style input')
 tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
-if FLAGS.reproduce == 'debug':
-    # FLAGS.model = 'lsnn'
-    # FLAGS.beta = 1
-    # FLAGS.thr = 0.01
+if FLAGS.reproduce == '560_extSR':
+    FLAGS.model = 'lsnn'
+    FLAGS.n_charac = 20
     FLAGS.seq_len = 10
     FLAGS.seq_delay = 4
-    # FLAGS.n_iter = 2000
-    # FLAGS.tau_a = 2000
-    # FLAGS.preserve_state = False
+    FLAGS.test_dict_size = 20
+    FLAGS.min_hamming_dist = 5
+    FLAGS.tau_char = 100
     FLAGS.f0 = 500
-    FLAGS.lr_decay = 0.8
-    # FLAGS.reg = 0.0005
-    # FLAGS.max_in_bit_prob = 0.5
-    # FLAGS.learning_rate = 0.01
 
-    # FLAGS.tau_char = 100
-    # FLAGS.tau_out = 50
-    # FLAGS.n_regular = 100
-    # FLAGS.n_adaptive = 100
-
-    # FLAGS.min_hamming_dist = 5
-    # FLAGS.n_charac = 20
-    # FLAGS.train_dict_size = 10
-    # FLAGS.test_dict_size = 10
+    FLAGS.tau_a = 800
+    FLAGS.beta = 4
+    FLAGS.n_per_channel = 2
     FLAGS.n_in = (FLAGS.n_charac * 3) * FLAGS.n_per_channel
-    # FLAGS.do_plot = True
-    # FLAGS.monitor_plot = True
-    # FLAGS.interactive_plot = True
-
-if FLAGS.reproduce == '560_LIF':
-    print("Using the hyperparameters as in 560 paper: pure ELIF network")
-    FLAGS.model = 'lsnn'
-    FLAGS.beta = 0.0
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 60
-    FLAGS.n_adaptive = 0
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-
-if FLAGS.reproduce == '560_ELIF':
-    print("Using the hyperparameters as in 560 paper: pure ELIF network")
-    FLAGS.model = 'lsnn'
-    FLAGS.beta = -0.5
-    FLAGS.thr = 0.02
     FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
+    FLAGS.n_adaptive = 1000
 
-if FLAGS.reproduce == '560_ALIF':
-    print("Using the hyperparameters as in 560 paper: pure ALIF network")
-    FLAGS.model = 'lsnn'
-    FLAGS.beta = 1
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.tau_a = 2000
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-
-if FLAGS.reproduce == '560_table':
-    print("Using the hyperparameters as in 560 paper: ALIF table")
-    FLAGS.model = 'lsnn'
-    FLAGS.batch_train = 64
-    FLAGS.batch_val = 64
-    FLAGS.batch_test = 64
-    FLAGS.beta = 1
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-
-if FLAGS.reproduce == '560_STP_F':
-    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
-    FLAGS.model = 'stp'
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-    FLAGS.tauF = 500
-    FLAGS.tauD = 200
-
-if FLAGS.reproduce == '560_STP_D':
-    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
-    FLAGS.model = 'stp'
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-    FLAGS.tauF = 20
-    FLAGS.tauD = 700
-
-if FLAGS.reproduce == '560_STP_F_scaleAll':
-    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
-    FLAGS.model = 'stp'
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-    FLAGS.tauF = 2000
-    FLAGS.tauD = 800
-
-if FLAGS.reproduce == '560_STP_D_scaleAll':
-    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
-    FLAGS.model = 'stp'
-    FLAGS.thr = 0.01
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 60
-    FLAGS.seq_len = 20
-    FLAGS.seq_delay = 10
-    FLAGS.n_in = 40
-    FLAGS.n_iter = 400
-    FLAGS.tauF = 60
-    FLAGS.tauD = 2000
+    FLAGS.lr_decay = 0.8
+    FLAGS.batch_train = 512
+    FLAGS.entropy_loss = True
+    FLAGS.distractors = True
+    FLAGS.do_plot = True
 
 
 if FLAGS.batch_val is None:
@@ -670,8 +560,45 @@ for k_iter in range(FLAGS.n_iter):
     validation_word_error_list.append(results_values['word_errors'])
     training_time_list.append(t_train)
     time_to_ref_list.append(time() - t_ref)
+    results = {
+        'error': validation_error_list[-1],
+        'word_error': validation_word_error_list[-1],
+        'loss': test_loss_list[-1],
+        'loss_with_reg': test_loss_with_reg_list[-1],
+        'loss_with_reg_list': test_loss_with_reg_list,
+        'val_error_list': validation_error_list,
+        'val_word_error_list': validation_word_error_list,
+        'train_error_list': train_errors,
+        'train_word_error_list': train_word_errors,
+        'loss_list': test_loss_list,
+        'time_to_ref': time_to_ref_list,
+        'training_time': training_time_list,
+        'tau_delay_list': tau_delay_list,
+        'flags': flag_dict,
+    }
 
     if np.mod(k_iter, print_every) == 0:
+
+        save_file(results, full_path, 'training_results', file_type='json')
+
+        if np.mean(validation_word_error_list[-print_every:]) < smallest_error:
+            early_stop_valid_results = {
+                'val_error': np.mean(validation_error_list[-print_every:]),
+                'val_word_error': np.mean(validation_word_error_list[-print_every:]),
+                'train_error': np.mean(train_errors[-print_every:]),
+                'train_word_error': np.mean(train_word_errors[-print_every:]),
+                'val_error_list': validation_error_list,
+                'val_word_error_list': validation_word_error_list,
+                'train_error_list': train_errors,
+                'train_word_error_list': train_word_errors,
+                'flags': flag_dict,
+            }
+            smallest_error = np.mean(validation_word_error_list[-print_every:])
+            print("Early stopping checkpoint! Smallest validation error so far: " + str(smallest_error))
+            save_file(early_stop_valid_results, full_path, 'early_stop_valid_results', file_type='json')
+            saver.save(sess, os.path.join(full_path, 'model'))
+            saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
+            save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
 
         print(("Iter {}, avg.error on the train set BIT: {:.2g} WORD: {:.2g} and "
                "test set BIT: {:.2g} +- {:.2g} WORD: {:.2g}")
@@ -693,23 +620,6 @@ for k_iter in range(FLAGS.n_iter):
         firing_rate_stats = get_stats(results_values['av'] * 1000)
         reg_coeff_stats = get_stats(results_values['adaptive_regularization_coeff'])
 
-        results = {
-            'error': validation_error_list[-1],
-            'word_error': validation_word_error_list[-1],
-            'loss': test_loss_list[-1],
-            'loss_with_reg': test_loss_with_reg_list[-1],
-            'loss_with_reg_list': test_loss_with_reg_list,
-            'val_error_list': validation_error_list,
-            'val_word_error_list': validation_word_error_list,
-            'train_error_list': train_errors,
-            'train_word_error_list': train_word_errors,
-            'loss_list': test_loss_list,
-            'time_to_ref': time_to_ref_list,
-            'training_time': training_time_list,
-            'tau_delay_list': tau_delay_list,
-            'flags': flag_dict,
-        }
-        save_file(results, full_path, 'training_results', file_type='json')
 
         if FLAGS.verbose:
             print('''
@@ -776,13 +686,6 @@ for k_iter in range(FLAGS.n_iter):
                                     'fig_train_' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
             fig.savefig(tmp_path, format='pdf')
-        if np.mean(validation_word_error_list[-print_every:]) < smallest_error:
-            smallest_error = np.mean(validation_word_error_list[-print_every:])
-            print("Early stopping checkpoint! Smallest validation error so far: " + str(smallest_error))
-            # Save the tensorflow graph
-            saver.save(sess, os.path.join(full_path, 'model'))
-            saver.export_meta_graph(os.path.join(full_path, 'graph.meta'))
-            save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
 
         if np.mean(validation_word_error_list[-print_every:]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
@@ -792,76 +695,23 @@ for k_iter in range(FLAGS.n_iter):
 
 print('FINISHED IN {:.2g} s'.format(time() - t_ref))
 
-# Save everything
-if FLAGS.save_data:
-
-    results = {
-        'error': validation_error_list[-1],
-        'word_error': validation_word_error_list[-1],
-        'loss': test_loss_list[-1],
-        'loss_with_reg': test_loss_with_reg_list[-1],
-        'loss_with_reg_list': test_loss_with_reg_list,
-        'val_error_list': validation_error_list,
-        'val_word_error_list': validation_word_error_list,
-        'train_error_list': train_errors,
-        'train_word_error_list': train_word_errors,
-        'loss_list': test_loss_list,
-        'time_to_ref': time_to_ref_list,
-        'training_time': training_time_list,
-        'tau_delay_list': tau_delay_list,
-        'flags': flag_dict,
-    }
-    save_file(results, full_path, 'training_results', file_type='json')
-
-    if custom_plot is not None:
-        test_dict = get_data_dict(FLAGS.batch_test, override_input=custom_plot)
-        feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
-            cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
-        plot_custom_results_values = sess.run(plot_result_tensors, feed_dict=test_dict)
-        save_file(plot_custom_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
-        if FLAGS.do_plot and FLAGS.monitor_plot:
-            for batch in range(10):  # FLAGS.batch_test
-                if FLAGS.model in ['lsnn', 'lstm']:
-                    update_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
-                else:
-                    update_stp_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
-                plt.savefig(os.path.join(full_path, 'figure_custom' + str(batch) + '.pdf'), format='pdf')
-
-    # Save sample trajectory (input, output, etc. for plotting)
-    test_errors = []
-    for i in range(16):
-        test_dict = get_data_dict(FLAGS.batch_test, test=True)
-        feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
-            cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
-
-        results_values, plot_results_values, in_spk, spk, spk_con = sess.run(
-            [results_tensors, plot_result_tensors, input_spikes, z, z_con],
-            feed_dict=test_dict)
-        if FLAGS.preserve_state:
-            last_final_state_state_testing_pointer[0] = results_values['final_state']
-        test_errors.append(results_values['recall_errors'])
-
+if custom_plot is not None:
+    test_dict = get_data_dict(FLAGS.batch_test, override_input=custom_plot)
+    feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
+        cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
+    plot_custom_results_values = sess.run(plot_result_tensors, feed_dict=test_dict)
+    save_file(plot_custom_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
     if FLAGS.do_plot and FLAGS.monitor_plot:
-        if FLAGS.model in ['lsnn', 'lstm']:
-            update_plot(plt, ax_list, FLAGS, plot_results_values)
-        else:
-            update_stp_plot(plt, ax_list, FLAGS, plot_results_values)
-        fig.savefig(os.path.join(full_path, 'figure_test' + start_time.strftime("%H%M") + '.pdf'), format='pdf')
+        for batch in range(10):  # FLAGS.batch_test
+            if FLAGS.model in ['lsnn', 'lstm']:
+                update_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
+            else:
+                update_stp_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
+            plt.savefig(os.path.join(full_path, 'figure_custom' + str(batch) + '.pdf'), format='pdf')
 
-    print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {})'''
-          .format(np.mean(test_errors), np.std(test_errors), FLAGS.batch_test))
-
-    # Save test results
-    results = {
-        'test_errors': test_errors,
-        'test_errors_mean': np.mean(test_errors),
-        'test_errors_std': np.std(test_errors),
-    }
-    save_file(results, full_path, 'test_results', file_type='json')
-    print("saved test_results.json")
-    # Save network variables (weights, delays, etc.)
-    network_data = tf_cell_to_savable_dict(cell, sess)
-    network_data['w_out'] = results_values['w_out']
-    save_file(network_data, full_path, 'tf_cell_net_data', file_type='pickle')
+# Save network variables (weights, delays, etc.)
+network_data = tf_cell_to_savable_dict(cell, sess)
+network_data['w_out'] = results_values['w_out']
+save_file(network_data, full_path, 'tf_cell_net_data', file_type='pickle')
 
 del sess
