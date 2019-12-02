@@ -8,11 +8,11 @@ from matplotlib import cm
 from collections import OrderedDict
 from matplotlib.colors import LinearSegmentedColormap
 
-def raster_plot(ax,spikes,linewidth=0.8,**kwargs):
+def raster_plot(ax,spikes,linewidth=0.8, max_spike=10000, **kwargs):
 
     n_t,n_n = spikes.shape
     event_times,event_ids = np.where(spikes)
-    max_spike = 10000
+
     event_times = event_times[:max_spike]
     event_ids = event_ids[:max_spike]
 

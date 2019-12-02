@@ -23,7 +23,7 @@ from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_b
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
 
 from tutorial_extended_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch, \
-    update_plot, update_stp_plot, generate_spiking_storerecall_batch, generate_value_dicts, storerecall_error
+    update_plot, generate_spiking_storerecall_batch, generate_value_dicts, storerecall_error
 
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
@@ -58,8 +58,8 @@ tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization
 tf.app.flags.DEFINE_integer('n_iter', 4000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('seq_len', 20, 'Number of character steps')
-tf.app.flags.DEFINE_integer('seq_delay', 10, 'Expected delay in character steps. Must be <= seq_len - 2')
+tf.app.flags.DEFINE_integer('seq_len', 10, 'Number of character steps')
+tf.app.flags.DEFINE_integer('seq_delay', 4, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 100, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
@@ -110,11 +110,11 @@ assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 if FLAGS.reproduce == '560_extSR':
     FLAGS.model = 'lsnn'
     # FLAGS.n_charac = 20
-    FLAGS.seq_len = 10
-    FLAGS.seq_delay = 4
+    # FLAGS.seq_len = 10
+    # FLAGS.seq_delay = 4
     FLAGS.test_dict_size = 20
     # FLAGS.min_hamming_dist = 5
-    FLAGS.tau_char = 100
+    # FLAGS.tau_char = 100
     FLAGS.f0 = 500
 
     FLAGS.tau_a = 800
@@ -287,7 +287,7 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
             n_neuron=FLAGS.n_in,
             f0=FLAGS.f0 / 1000,  # convert frequency in Hz to kHz or probability of firing every dt=1ms step
             test_dict=test_value_dict if not FLAGS.onehot else None,
-            max_prob_active=FLAGS.max_in_bit_prob if not FLAGS.onehot else None,
+            max_prob_active=None,
             min_hamming_dist=FLAGS.min_hamming_dist if not FLAGS.onehot else None,
             distractors=FLAGS.distractors,
             n_values=FLAGS.n_charac if FLAGS.onehot else None,

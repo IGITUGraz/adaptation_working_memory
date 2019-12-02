@@ -592,6 +592,10 @@ def generate_storerecall_data(batch_size, sentence_length, n_character, n_charac
     return spikes, is_recall, target_sequence, None, input_nums, target_nums
 
 
+def update_stp_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_per_raster=100):
+    raise ValueError("Not implemented")
+
+
 def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuron_per_raster=100):
     """
     This function iterates the matplotlib figure on every call.
@@ -685,7 +689,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
         vars = np.var(sub_data, axis=0)
         cell_with_max_var = np.argsort(vars)[::-1]
         presentation_steps = np.arange(sub_data.shape[0])
-        ax.plot(sub_data[:, cell_with_max_var], color='r', alpha=0.4, linewidth=1)
+        ax.plot(sub_data[:, cell_with_max_var[::subsample_rnn]], color='r', alpha=0.4, linewidth=1)
         ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
                  np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
         hide_bottom_axis(ax)
@@ -727,131 +731,6 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
     ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
     # ax.legend(handles=[line_output2], loc='lower center', fontsize=7,
     #           bbox_to_anchor=(0.5, -0.1), ncol=3)
-
-    ax.set_xlabel('time in ms', fontsize=fs)
-    # To plot with interactive python one need to wait one second to the time to draw the axis
-    if FLAGS.do_plot:
-        plt.draw()
-        plt.pause(1)
-
-
-def update_stp_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, n_max_neuron_per_raster=100):
-    """
-    This function iterates the matplotlib figure on every call.
-    It plots the data for a fixed sequence that should be representative of the expected computation
-    :return:
-    """
-    ylabel_x = -0.11
-    ylabel_y = 0.5
-    fs = 10
-    plt.rcParams.update({'font.size': fs})
-
-    # Clear the axis to print new plots
-    for k in range(ax_list.shape[0]):
-        ax = ax_list[k]
-        ax.clear()
-        strip_right_top_axis(ax)
-
-    # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
-    z = plot_result_values['z']
-    raster_data = \
-        zip(range(3), [plot_result_values['input_spikes'], z, z], ['input X', 'R', 'A']) if FLAGS.n_regular > 0 else \
-        zip(range(2), [plot_result_values['input_spikes'], z], ['input X', 'A'])
-
-    for k_data, data, d_name in raster_data:
-        ax = ax_list[k_data]
-        # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-        hide_bottom_axis(ax)
-
-        if np.size(data) > 0:
-            data = data[batch]
-            if d_name is 'R':
-                data = data[:, :FLAGS.n_regular]
-            elif d_name is 'A':
-                data = data[:, FLAGS.n_regular:]
-            n_max = min(data.shape[1], n_max_neuron_per_raster)
-            cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
-            data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
-            raster_plot(ax, data, linewidth=0.15)
-            ax.set_ylabel(d_name, fontsize=fs)
-            ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-            ax.set_yticklabels(['1', str(data.shape[-1])])
-
-            if k_data == 0:
-                ax.set_yticklabels([])
-                n_channel = data.shape[1] // (FLAGS.n_charac + 2)  # divide #in_neurons with #in_channels
-                ax.add_patch(  # Value 0 row
-                    patches.Rectangle((0, 0), data.shape[0], n_channel, facecolor="red", alpha=0.15))
-                ax.add_patch(  # Value 1 row
-                    patches.Rectangle((0, n_channel), data.shape[0], n_channel, facecolor="blue", alpha=0.15))
-                ax.add_patch(  # Store row
-                    patches.Rectangle((0, 2 * n_channel), data.shape[0], n_channel, facecolor="yellow", alpha=0.15))
-                ax.add_patch(  # Recall row
-                    patches.Rectangle((0, 3 * n_channel), data.shape[0], n_channel, facecolor="green", alpha=0.15))
-
-                top_margin = 0.08
-                left_margin = -0.085
-                ax.text(left_margin, 1. - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.75 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.5 - top_margin, 'value 1', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.25 - top_margin, 'value 0', transform=ax.transAxes, fontsize=7, verticalalignment='top')
-
-    ax = ax_list[-2]
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('STP u, x', fontsize=fs)
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    u_data = plot_result_values['stp_u'][batch]
-    x_data = plot_result_values['stp_x'][batch]
-    vars = np.var(u_data, axis=0)
-    cell_with_max_var = np.argsort(vars)[::-1]
-    presentation_steps = np.arange(u_data.shape[0])
-    ax.plot(u_data[:, cell_with_max_var], color='b', alpha=0.4, linewidth=1, label="u")
-    ax.plot(x_data[:, cell_with_max_var], color='r', alpha=0.4, linewidth=1, label="x")
-    # [xmin, xmax, ymin, ymax]
-    # ymin = np.min([np.min(u_data[:, cell_with_max_var]), np.min(x_data[:, cell_with_max_var])])
-    # ymax = np.min([np.max(u_data[:, cell_with_max_var]), np.max(x_data[:, cell_with_max_var])])
-    # ax.axis([0, presentation_steps[-1], ymin, ymax])
-    ax.axis([0, presentation_steps[-1], 0., 1.])
-    # ax.legend()
-    hide_bottom_axis(ax)
-
-    # plot targets
-    ax = ax_list[-1]
-    mask = plot_result_values['recall_charac_mask'][batch]
-    # data = plot_result_values['target_nums'][batch]
-    # data[np.invert(mask)] = -1
-    # lines = []
-    # ind_nt = np.argwhere(data != -1)
-    # for idx in ind_nt.tolist():
-    #     i = idx[0]
-    #     lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    # lc_t = mc.LineCollection(lines, colors='green', linewidths=2, label='target')
-    # ax.add_collection(lc_t)  # plot target segments
-
-    # plot output per tau_char
-    data = plot_result_values['out_plot_char_step'][batch]
-    data = np.array([(d[1] - d[0] + 1) / 2 for d in data])
-    data[np.invert(mask)] = -1
-    lines = []
-    ind_nt = np.argwhere(data != -1)
-    for idx in ind_nt.tolist():
-        i = idx[0]
-        lines.append([(i * FLAGS.tau_char, data[i]), ((i + 1) * FLAGS.tau_char, data[i])])
-    lc_o = mc.LineCollection(lines, colors='blue', linewidths=2, label='avg. output')
-    ax.add_collection(lc_o)  # plot target segments
-
-    # plot softmax of psp-s per dt for more intuitive monitoring
-    # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
-    output2 = plot_result_values['out_plot'][batch, :, 1]
-    presentation_steps = np.arange(output2.shape[0])
-    ax.set_yticks([0, 0.5, 1])
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('output Y', fontsize=fs)
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    line_output2, = ax.plot(presentation_steps, output2, color='purple', label='output', alpha=0.7)
-    ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
-    ax.legend(handles=[lc_t, lc_o, line_output2], loc='lower center', fontsize=7,
-              bbox_to_anchor=(0.5, -0.1), ncol=3)
 
     ax.set_xlabel('time in ms', fontsize=fs)
     # To plot with interactive python one need to wait one second to the time to draw the axis
@@ -921,3 +800,246 @@ def avg_firingrates_during_delay(data_path):
         firing_rates[k] = np.mean(firing_rates[k]) * 1000
         print("AVG Firing rate for memory content ({}) = {:.2g}".format(k, firing_rates[k]))
     return firing_rates
+
+
+def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=False):
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+    import datetime
+    import pickle
+    import json
+    from tqdm import tqdm
+    import os
+
+    pbar = tqdm(total=10)
+    flags_dict = json.load(open(os.path.join(data_path, 'flags.json')))
+    from types import SimpleNamespace
+    FLAGS = SimpleNamespace(**flags_dict)
+
+    plot_data = 'plot_custom_trajectory_data.pickle' if custom_plot else 'plot_trajectory_data.pickle'
+    data = pickle.load(open(os.path.join(data_path, plot_data), 'rb'))
+    pbar.update(1)
+
+    raw_input = data['input_spikes']  # also for analog input the key is 'input_spikes'
+    # print(FLAGS)
+    # print(raw_input.shape)  # batch, time, channels (128, 1000, 60)
+    shp = raw_input.shape
+    ch_in = np.mean(np.reshape(raw_input, (shp[0], -1, FLAGS.tau_char, shp[2])), axis=2)  # avg per char step
+    pbar.update(1)
+    shp = ch_in.shape
+    ch_in = np.mean(np.reshape(ch_in, (shp[0], shp[1], -1, FLAGS.n_per_channel)), axis=3)  # avg per channel
+    ch_in = ch_in > 0.0  # convert to binary
+    pbar.update(1)
+    # print(ch_in.shape)
+    n_group = FLAGS.n_charac  # size of a group in input channels. groups: store-recall, input, inv-input
+    assert ch_in.shape[2] == 3 * n_group, \
+        "ch_in.shape[2]" + str(ch_in.shape[2]) + " does not contain 3 groups of " + str(n_group)
+    store = np.mean(ch_in[:, :, :n_group // 2], axis=2)[..., np.newaxis]  # first half of first group
+    recall = np.mean(ch_in[:, :, n_group // 2:n_group], axis=2)[..., np.newaxis]  # second half of first group
+    norm_input = ch_in[:, :, n_group:2 * n_group]
+    pbar.update(1)
+
+    store_idxs = np.nonzero(store)  # list of batch idxs, list of time idxs
+    recall_idxs = np.nonzero(recall)  # list of batch idxs, list of time idxs
+    delays = [r - s for s, r in zip(store_idxs[1], recall_idxs[1])]
+    long_delay_batch = np.argmax(delays)
+
+    start_time = datetime.datetime.now()
+    filename = os.path.join(data_path, 'figure_test' + str(long_delay_batch) + '_' + start_time.strftime("%H%M"))
+    pbar.update(1)
+
+    plt.ion()
+    # fig, ax_list = plt.subplots(nrows=5, figsize=(6, 7.3), gridspec_kw={'wspace': 0, 'hspace': 0.2})
+    fig = plt.figure(figsize=(7.3, 8), tight_layout=True)
+    gs = gridspec.GridSpec(7, 10, wspace=0.05, hspace=0.2)
+    plt.subplots_adjust(left=0.13, right=0.96, top=0.99, bottom=0.06)
+    pbar.update(1)
+
+    plot_result_values = data
+    batch = long_delay_batch
+
+    # subsample_rnn = FLAGS.n_per_channel
+    subsample_rnn = 1
+    ylabel_x = -0.11
+    ylabel_y = 0.5
+    fs = 10
+    plt.rcParams.update({'font.size': fs})
+
+    top_margin = 0.08
+    left_margin = -0.085
+    spikewidth = 0.15
+
+    # PLOT INPUT PATTERNS
+    for pi in range(norm_input.shape[1]):  # this should be 10
+        ax = fig.add_subplot(gs[0, pi])
+        pattern_flat = norm_input[batch, pi]
+        pattern = np.reshape(pattern_flat, (5, 4))
+        ax.imshow(pattern, cmap='binary')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # PLOT STORE-RECALL SIGNAL SPIKES
+    max_spike = 20000
+    # ax = fig.add_subplot(gs[1, :])
+    # ax.clear()
+    # strip_right_top_axis(ax)
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 3)
+    sr_num_channels = FLAGS.n_charac
+    sr_num_neurons = sr_num_channels * n_neuron_per_channel
+    sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
+    sr_spikes = sr_spikes[:, ::FLAGS.n_per_channel]
+    # raster_plot(ax, sr_spikes, linewidth=spikewidth, max_spike=max_spike)
+    # # sr_channel_neurons = sr_num_neurons // 2
+    # # sr_channels = np.mean(sr_spikes.reshape(sr_spikes.shape[0], -1, sr_channel_neurons), axis=2)
+    # # cax = ax.imshow(sr_channels.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
+    # ax.set_yticklabels([])
+    # ax.text(left_margin, 0.8 - top_margin, 'recall', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+    # ax.text(left_margin, 0.4 - top_margin, 'store', transform=ax.transAxes, fontsize=7, verticalalignment='top')
+    # ax.set_xticks([])
+
+    # PLOT INPUT SPIKES
+    k_data = 0
+    data = plot_result_values['input_spikes']
+    d_name = 'input'
+    ax = fig.add_subplot(gs[1:3, :])
+    ax.clear()
+    strip_right_top_axis(ax)
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    if spikesonly:
+        hide_bottom_axis(ax)
+        ax.spines['left'].set_visible(False)
+        ax.set_xticklabels([])
+        ax.get_xaxis().set_visible(False)
+        ax.set_yticks([])
+        ax.get_yaxis().set_visible(False)
+
+    data = data[batch]
+    data = data[:, sr_num_neurons::FLAGS.n_per_channel]
+    # max_y_tick_label = str(data.shape[-1])
+    # data = np.mean(data.reshape(data.shape[0], -1, n_neuron_per_channel), axis=2)
+    # cax = ax.imshow(data.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
+    input_spikes = np.hstack((data, sr_spikes))
+    if not restonly:
+        raster_plot(ax, input_spikes, linewidth=spikewidth, max_spike=max_spike)
+    ax.set_ylabel(d_name, fontsize=fs)
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    # ax.set_yticklabels(['1', max_y_tick_label])
+    if spikesonly:
+        extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(filename + '_SPIKES_INPUT.png', bbox_inches=extent, dpi=1000)
+
+    pbar.update(1)
+
+    # PLOT ALIF SPIKES
+    k_data = 1
+    data = plot_result_values['z']
+    d_name = 'ALIF'
+    ax = fig.add_subplot(gs[3, :])
+    ax.clear()
+    strip_right_top_axis(ax)
+    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    hide_bottom_axis(ax)
+    if spikesonly:
+        hide_bottom_axis(ax)
+        ax.spines['left'].set_visible(False)
+        ax.set_xticklabels([])
+        ax.get_xaxis().set_visible(False)
+        ax.set_yticks([])
+        ax.get_yaxis().set_visible(False)
+
+    data = data[batch]
+    data = data[:, FLAGS.n_regular::subsample_rnn]
+
+    cell_select = np.linspace(start=0, stop=data.shape[1] - 1, dtype=int)
+    data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
+    if not restonly:
+        raster_plot(ax, data, linewidth=spikewidth, max_spike=max_spike)
+
+    ax.set_ylabel(d_name, fontsize=fs)
+    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    ax.set_yticklabels(['1', str(data.shape[-1])])
+    if spikesonly:
+        extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(filename + '_SPIKES_ALIF.png', bbox_inches=extent, dpi=1000)
+    pbar.update(1)
+
+    if not spikesonly:
+        ax = fig.add_subplot(gs[-3, :])
+        ax.clear()
+        strip_right_top_axis(ax)
+        # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+        ax.set_ylabel('thresholds', fontsize=fs)
+        ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+        sub_data = plot_result_values['b_con'][batch]
+        vars = np.var(sub_data, axis=0)
+        cell_with_max_var = np.argsort(vars)[::-1]
+        presentation_steps = np.arange(sub_data.shape[0])
+        ax.plot(sub_data[:, cell_with_max_var[::10]], color='r', alpha=0.4, linewidth=1)
+        ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
+                 np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
+        hide_bottom_axis(ax)
+        pbar.update(1)
+
+        # plot targets
+        ax = fig.add_subplot(gs[-2, :])
+        ax.clear()
+        strip_right_top_axis(ax)
+        # plot softmax of psp-s per dt for more intuitive monitoring
+        # ploting only for second class since this is more intuitive to follow (first class is just a mirror)
+        output2 = plot_result_values['out_plot'][batch, :, :]
+        presentation_steps = np.arange(output2.shape[0])
+        ax.set_yticks([0, 0.5, 1])
+        # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+        ax.set_ylabel('output', fontsize=fs)
+        ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+        ax.plot(output2, label='output', alpha=0.7)
+        ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
+        # ax.legend(handles=[line_output2], loc='lower center', fontsize=7,
+        #           bbox_to_anchor=(0.5, -0.1), ncol=3)
+
+        ax.set_xlabel('time in ms', fontsize=fs)
+
+        # PLOT OUTPUT PATTERNS
+        shp = output2.shape
+        ch_out = np.mean(np.reshape(output2, (-1, FLAGS.tau_char, shp[1])), axis=1)  # avg per char step
+        for pi in range(norm_input.shape[1]):  # this should be 10
+            ax = fig.add_subplot(gs[-1, pi])
+            pattern_flat = ch_out[pi]
+            pattern = np.reshape(pattern_flat, (5, 4))
+            ax.imshow(pattern, cmap='binary')
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+    pbar.update(1)
+    # To plot with interactive python one need to wait one second to the time to draw the axis
+    plt.draw()
+    plt.pause(2)
+
+    if spikesonly:
+        filename += '_SPIKES'
+        fig.savefig(filename + '.png', format='png')
+    fig.savefig(filename + '.pdf', format='pdf')
+    pbar.update(1)
+    pbar.close()
+    print("Longest delay", delays[long_delay_batch], "in batch", long_delay_batch)
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    import argparse
+    import pickle
+    import json
+    import os
+
+    parser = argparse.ArgumentParser(description='Plot extended SR activity for a sequence.')
+    parser.add_argument('path', help='Path to directory that contains flags and plot data.')
+    parser.add_argument('--customplot', default=False, help='Use custom plot file.')
+    # parser.add_argument('--spikesonly', default=False, help='Plot only spikes.')
+    args = parser.parse_args()
+
+    print("Attempting to load model from " + args.path)
+
+    # pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=args.spikesonly)
+    # pretty_560_plot(args.path, custom_plot=args.customplot)
+    pretty_560_plot(args.path, custom_plot=args.customplot, restonly=True)
+    pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=True)
