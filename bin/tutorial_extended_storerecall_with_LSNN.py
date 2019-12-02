@@ -109,11 +109,11 @@ assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
 if FLAGS.reproduce == '560_extSR':
     FLAGS.model = 'lsnn'
-    FLAGS.n_charac = 20
+    # FLAGS.n_charac = 20
     FLAGS.seq_len = 10
     FLAGS.seq_delay = 4
     FLAGS.test_dict_size = 20
-    FLAGS.min_hamming_dist = 5
+    # FLAGS.min_hamming_dist = 5
     FLAGS.tau_char = 100
     FLAGS.f0 = 500
 
@@ -271,6 +271,7 @@ if not FLAGS.onehot:
         train_dict_size=FLAGS.train_dict_size, test_dict_size=FLAGS.test_dict_size,
         max_prob_active=FLAGS.max_in_bit_prob,
         min_hamming_dist=FLAGS.min_hamming_dist)
+    # NOTE: currently train_value_dict is empty and is not used anywhere in the simulations
     save_file({"train_value_dict": train_value_dict, "test_value_dict": test_value_dict},
               full_path, 'value_dicts', file_type='json')
 save_file(flag_dict, full_path, 'flags', file_type='json')

@@ -254,64 +254,8 @@ if __name__ == "__main__":
     parser.add_argument('path', help='Path to directory that contains flags and plot data.')
     parser.add_argument('--plot', default='plot_trajectory_data.pickle',
                         help='Filename of pickle file containing data for plotting.')
-    # parser.add_argument("--meanhist", help="string to match when doing mean histogram over many runs")
     args = parser.parse_args()
 
-    # if not os.path.exists(args.path):
-    #     print("Given path (" + args.path + ") does not exist")
-    #     exit(1)
-    # if not os.path.isdir(args.path):
-    #     print("Given path (" + args.path + ") is not a directory")
-    #     exit(1)
-    #
-    # if args.meanhist:
-    #     # n_adaptive = 0
-    #     # n_regular = 0
-    #     taus_per_sim = []
-    #     for subdir, dirs, files in os.walk(args.path):
-    #         if args.meanhist not in subdir:
-    #             continue
-    #         print(subdir)
-    #         for f in files:
-    #             # if "flags.json" in f:
-    #             #     fpath = os.path.join(subdir, f)
-    #             #     d = json.load(open(fpath))
-    #             #     if n_adaptive == 0:
-    #             #         n_adaptive = d['n_adaptive']
-    #             #     else:
-    #             #         assert n_adaptive == d['n_adaptive'], "FLAGS.n_adaptive do not match in " + subdir
-    #             #     if n_regular == 0:
-    #             #         n_regular = d['n_regular']
-    #             #     else:
-    #             #         assert n_regular == d['n_regular'], "FLAGS.n_regular do not match in " + subdir
-    #             #     print("n_adaptive", n_adaptive, "n_regular", n_regular)
-    #             if "TESTresults.json" in f:
-    #                 fpath = os.path.join(subdir, f)
-    #                 d = json.load(open(fpath))
-    #                 try:
-    #                     taus_per_sim.append(d['tau'])
-    #                     print(subdir, d['tau'])
-    #                 except:
-    #                     print(subdir, "ERROR")
-    #     merged_taus = list(itertools.chain.from_iterable(taus_per_sim))
-    #
-    #     import matplotlib.pyplot as plt
-    #     plt.cla()
-    #     plt.clf()
-    #     # logbins = np.logspace(np.log10(bins[0]), np.log10(bins[-1]), len(bins))
-    #     logbins = np.logspace(np.log10(10), np.log10(1000), 25)
-    #     hist, bins, _ = plt.hist(merged_taus, bins=logbins, normed=False, facecolor='green', alpha=0.5,
-    #                              edgecolor='black', linewidth=0.5)
-    #     plt.xscale("log")  # , nonposx='clip')
-    #     plt.xlim([10, 10 ** 3])
-    #     locs, labels = plt.yticks()
-    #     plt.yticks(locs, ["{:.1f}".format(100 * i / len(merged_taus)) for i in locs])
-    #     plt.ylabel("percentage of cells")
-    #     # plt.ylabel("num. of cells")
-    #     plt.xlabel("intrinsic time constant (ms)")
-    #     plt_path = os.path.join(args.path, 'autocorr_merged_hist_{}.pdf'.format(args.meanhist))
-    #     plt.savefig(plt_path, format='pdf')
-    # else:
     print("Attempting to load model from " + args.path)
 
     if os.path.exists(os.path.join(args.path, 'flags.json')):
@@ -323,8 +267,7 @@ if __name__ == "__main__":
     FLAGS = SimpleNamespace(**flags_dict)
 
     data = pickle.load(open(os.path.join(args.path, args.plot), 'rb'))
-    if not FLAGS.analog_in:
-        raise ValueError("Spiking input analysis not implemented")
+
     raw_input = data['input_spikes']  # also for analog input the key is 'input_spikes'
     # print(FLAGS)
     # print(raw_input.shape)  # batch, time, channels (128, 1000, 60)
@@ -332,6 +275,7 @@ if __name__ == "__main__":
     ch_in = np.mean(np.reshape(raw_input, (shp[0], -1, FLAGS.tau_char, shp[2])), axis=2)  # avg per char step
     shp = ch_in.shape
     ch_in = np.mean(np.reshape(ch_in, (shp[0], shp[1], -1, FLAGS.n_per_channel)), axis=3)  # avg per channel
+    ch_in = ch_in > 0.0  # convert to binary
     # print(ch_in.shape)
     n_group = FLAGS.n_charac  # size of a group in input channels. groups: store-recall, input, inv-input
     assert ch_in.shape[2] == 3 * n_group,\
@@ -349,132 +293,55 @@ if __name__ == "__main__":
     # plt.imshow(plot_input[1].T)
     # plt.tight_layout()
     # plt.show()
+    # exit()
 
     z_output = data['z']  # batch, time, neurons
     shp = z_output.shape
     z_avg = np.mean(np.reshape(z_output, (shp[0], -1, FLAGS.tau_char, shp[2])), axis=2)  # batch, FLAGS.seq_len, neurons
 
-    def get_delay_data():
-        x_all = []
-        y_all = []
-        x = []
-        y = []
-        x_test = []
-        y_test = []
+    def to_label(input_data):
+        return ''.join(input_data.astype(int).astype(str))
+
+    def get_data():
+        x_recall = []
+        y_recall = []
+        x_delay = []
+        y_delay = []
         store_idxs = np.nonzero(store)  # list of batch idxs, list of time idxs
         recall_idxs = np.nonzero(recall)  # list of batch idxs, list of time idxs
         for b, s, r in zip(store_idxs[0], store_idxs[1], recall_idxs[1]):
-            # print("batch", b, "store", s, "recall", r)
-            if np.random.random() < 0.1:
-                x_test.append(z_avg[b, r-1])
-                y_test.append(np.nonzero(norm_input[b, s])[0][0])
-            else:
-                x.append(z_avg[b, r-1])
-                y.append(np.nonzero(norm_input[b, s])[0][0])
-            x_all.append(z_avg[b, r-1])
-            y_all.append(np.nonzero(norm_input[b, s])[0][0])
-        return x, y, x_test, y_test, x_all, y_all
+            x_recall.append(z_avg[b, r])
+            y_recall.append(to_label(norm_input[b, s]))
+            x_delay.append(z_avg[b, r - 1])
+            y_delay.append(to_label(norm_input[b, s]))
+        return x_delay, y_delay, x_recall, y_recall
 
-    def get_recall_data():
-        x_all = []
-        y_all = []
-        x = []
-        y = []
-        x_test = []
-        y_test = []
-        store_idxs = np.nonzero(store)  # list of batch idxs, list of time idxs
-        recall_idxs = np.nonzero(recall)  # list of batch idxs, list of time idxs
-        for b, s, r in zip(store_idxs[0], store_idxs[1], recall_idxs[1]):
-            # print("batch", b, "store", s, "recall", r)
-            if np.random.random() < 0.1:
-                x_test.append(z_avg[b, r])
-                y_test.append(np.nonzero(norm_input[b, s])[0][0])
-            else:
-                x.append(z_avg[b, r])
-                y.append(np.nonzero(norm_input[b, s])[0][0])
-            x_all.append(z_avg[b, r])
-            y_all.append(np.nonzero(norm_input[b, s])[0][0])
-        return x, y, x_test, y_test, x_all, y_all
+    x_delay_all, y_delay_all, x_recall_all, y_recall_all = get_data()
 
-    x_delay, y_delay, x_delay_test, y_delay_test, x_delay_all, y_delay_all = get_delay_data()
-    x_recall, y_recall, x_recall_test, y_recall_test, x_recall_all, y_recall_all = get_recall_data()
-
-    # for kernel in ['linear', 'rbf', 'poly']:
-    #     print("KERNEL:", kernel)
-    #     clf = svm.SVC(gamma='auto', kernel=kernel)
-    #     clf.fit(x_delay, y_delay)
-    #     y_predict = clf.predict(x_delay_test)
-    #     # print("predict", y_predict)
-    #     # print("target", y_test)
-    #     delay_corr = np.mean(y_predict == y_delay_test)
-    #     print("accuracy before recall:", delay_corr)
-    #
-    #     clf_recall = svm.SVC(gamma='auto', kernel=kernel)
-    #     clf_recall.fit(x_recall, y_recall)
-    #     y_recall_predict = clf_recall.predict(x_recall_test)
-    #     # print("predict", y_predict)
-    #     # print("target", y_test)
-    #     recall_corr = np.mean(y_recall_predict == y_recall_test)
-    #     print("accuracy during recall:", recall_corr)
-
-    # for x, y, x_test, y_test, dname in [(x_delay, y_delay, x_delay_test, y_delay_test, "DELAY"),
-    #                                     (x_recall, y_recall, x_recall_test, y_recall_test, "RECALL")]:
-    #     parameters = {'kernel': ('linear',), 'C': [0.1, 1, 10, 100, 1000, 10000]}
-    #     svc = svm.SVC(gamma="scale")
-    #     clf = GridSearchCV(svc, parameters, cv=5, refit=True)
-    #     clf.fit(x, y)
-    #     print("MODEL trained during ", dname)
-    #     print("score:", clf.best_score_)
-    #     print("params:", clf.best_params_)
-    #     # for k in sorted(clf.cv_results_.keys()):
-    #     #     print(k, "=", clf.cv_results_[k])
-    #     y_test_predict = clf.predict(x_test)
-    #     acc = np.mean(y_test_predict == y_test)
-    #     print("ACCURACY =", acc)
-
+    results = []
     for x, y, dname in [(x_delay_all, y_delay_all, "DELAY"), (x_recall_all, y_recall_all, "RECALL")]:
-        parameters = {'kernel': ('linear', 'rbf', 'poly'), 'C': [0.1, 1, 10, 100, 1000, 10000]}
+        parameters = {'kernel': ('linear', 'rbf', 'poly'), 'C': [0.1, 1, 10, 100, 1000]}
         svc = svm.SVC(gamma="auto")
         clf = GridSearchCV(svc, parameters, cv=5, refit=True, iid=True)
         clf.fit(x, y)
         print("MODEL trained during ", dname)
         print("score:", clf.best_score_)
         print("params:", clf.best_params_)
+        result = {'period': dname, 'accuracy': clf.best_score_, 'params': clf.best_params_}
+        results.append(result)
+    json.dump(results, open(os.path.join(args.path, 'SVM_information_analysis.json'), 'w'),
+              indent=4, sort_keys=True)
 
 """
-salaj@figipc64 /calc/salaj/repos/LSNN_560 $ python3 bin/activity_information_analysis.py results/tutorial_extended_storerecall_with_LSNN/2019_11_27_17_07_48_ALIF_seqlen10_seqdelay4_in60_R0_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
-Attempting to load model from results/tutorial_extended_storerecall_with_LSNN/2019_11_27_17_07_48_ALIF_seqlen10_seqdelay4_in60_R0_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
+salaj@figipc64 /calc/salaj/repos/LSNN_560 $ python3 bin/SVM_binstr_information_analysis.py results/tutorial_extended_storerecall_with_LSNN/2019_11_30_12_28_51_ALIF_seqlen10_seqdelay4_in120_R0_A1000_lr0.01_tauchar100_comment560_ExtSR_0/
+Attempting to load model from results/tutorial_extended_storerecall_with_LSNN/2019_11_30_12_28_51_ALIF_seqlen10_seqdelay4_in120_R0_A1000_lr0.01_tauchar100_comment560_ExtSR_0/
 MODEL trained during  DELAY
-score: 0.1357142857142857
-params: {'kernel': 'linear', 'C': 10}
+score: 0.22280701754385965
+params: {'C': 1, 'kernel': 'linear'}
 MODEL trained during  RECALL
-score: 0.9785714285714285
-params: {'kernel': 'linear', 'C': 0.1}
+score: 1.0
+params: {'C': 0.1, 'kernel': 'linear'}
 
-
-salaj@figipc64 /calc/salaj/repos/LSNN_560 $ python3 bin/activity_information_analysis.py results/tutorial_extended_storerecall_with_LSNN/2019_11_27_16_33_05_ALIF_seqlen10_seqdelay4_in60_R300_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
-Attempting to load model from results/tutorial_extended_storerecall_with_LSNN/2019_11_27_16_33_05_ALIF_seqlen10_seqdelay4_in60_R300_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
-MODEL trained during  DELAY
-score: 0.14285714285714285
-params: {'C': 100, 'kernel': 'linear'}
-MODEL trained during  RECALL
-score: 0.9071428571428571
-params: {'C': 10, 'kernel': 'linear'}
-
-
-WITH cv=3:
-salaj@figipc64 /calc/salaj/repos/LSNN_560 $ python3 bin/activity_information_analysis.py results/tutorial_extended_storerecall_with_LSNN/2019_11_28_09_34_34_ALIF_seqlen10_seqdelay4_in150_R0_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
-Attempting to load model from results/tutorial_extended_storerecall_with_LSNN/2019_11_28_09_34_34_ALIF_seqlen10_seqdelay4_in150_R0_A300_lr0.01_tauchar100_commentDEBUG_POPENC_EntrLoss/
-/home/salaj/.local/lib/python3.5/site-packages/sklearn/model_selection/_split.py:657: Warning: The least populated class in y has only 2 members, which is too few. The minimum number of members in any class cannot be less than n_splits=3.
-  % (min_groups, self.n_splits)), Warning)
-MODEL trained during  DELAY
-score: 0.08450704225352113
-params: {'kernel': 'linear', 'C': 0.1}
-/home/salaj/.local/lib/python3.5/site-packages/sklearn/model_selection/_split.py:657: Warning: The least populated class in y has only 2 members, which is too few. The minimum number of members in any class cannot be less than n_splits=3.
-  % (min_groups, self.n_splits)), Warning)
-MODEL trained during  RECALL
-score: 0.9929577464788732
-params: {'kernel': 'linear', 'C': 10}
 
 
 """
