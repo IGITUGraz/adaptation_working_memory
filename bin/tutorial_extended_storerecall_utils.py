@@ -270,7 +270,9 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
     Ensures minimal hamming distance between test words and any training words.
     Ensures sparsity in active bit by limiting the percentage of active bits in a word by max_prob_active.
     """
+    from tqdm import tqdm
     common_dict = []
+    pbar = tqdm(total=train_dict_size + test_dict_size)
     while len(common_dict) < train_dict_size + test_dict_size:
         test_candidate = random_binary_word(n_values, max_prob_active)
         valid = True
@@ -280,6 +282,8 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
                 break
         if valid:
             common_dict.append(test_candidate)
+            pbar.update(1)
+    pbar.close()
     return np.array(common_dict[:train_dict_size]), np.array(common_dict[train_dict_size:])
 
     # # Generate dictionary of unique binary words for training set

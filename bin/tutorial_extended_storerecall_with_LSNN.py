@@ -49,7 +49,7 @@ tf.app.flags.DEFINE_integer('n_charac', 20, 'number of characters in the recall 
 tf.app.flags.DEFINE_integer('n_in', 200, 'number of spiking input units. Must be divisable by (n_charac*2)')
 tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
 tf.app.flags.DEFINE_integer('train_dict_size', 0, 'Not used! (use only a constrained word dictionary for training')
-tf.app.flags.DEFINE_integer('test_dict_size', 10, 'Num. of test dict. words (min_hamming_dist away from training data)')
+tf.app.flags.DEFINE_integer('test_dict_size', 20, 'Num. of test dict. words (min_hamming_dist away from training data)')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
 tf.app.flags.DEFINE_integer('n_adaptive', 1000, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 500, 'input firing rate')
@@ -117,7 +117,7 @@ if FLAGS.reproduce == '560_extSR':
     # FLAGS.tau_char = 100
     FLAGS.f0 = 500
 
-    FLAGS.tau_a = 800
+    # FLAGS.tau_a = 800
     FLAGS.beta = 4
     FLAGS.n_per_channel = 2
     FLAGS.n_in = (FLAGS.n_charac * 3) * FLAGS.n_per_channel
