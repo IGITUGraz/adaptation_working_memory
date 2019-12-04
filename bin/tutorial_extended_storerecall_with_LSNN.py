@@ -15,6 +15,7 @@ import os
 import socket
 from time import time
 import json
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -106,6 +107,7 @@ tf.app.flags.DEFINE_bool('b_out', False, 'include bias in readout')
 tf.app.flags.DEFINE_bool('onehot', False, 'use onehot style input')
 tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
 tf.app.flags.DEFINE_bool('no_recall_distr', True, 'do not show any input values during recall command')
+tf.app.flags.DEFINE_bool('hamm_among_each_word', True, 'enforce hamming dist also among each test string')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -122,7 +124,7 @@ if FLAGS.reproduce == '560_extSR':
     # FLAGS.tau_a = 800
     FLAGS.beta = 4
     FLAGS.n_per_channel = 2
-    FLAGS.n_in = (FLAGS.n_charac * 3) * FLAGS.n_per_channel
+    FLAGS.n_in = (FLAGS.n_charac * 2 + 2) * FLAGS.n_per_channel
     # FLAGS.n_regular = 0
     # FLAGS.n_adaptive = 1000
 
@@ -139,6 +141,8 @@ if FLAGS.batch_test is None:
     FLAGS.batch_test = FLAGS.batch_train
 
 assert FLAGS.model in ['lsnn', 'stp', 'lstm']
+assert FLAGS.n_in == (FLAGS.n_charac * 2 + 2) * FLAGS.n_per_channel,\
+    "Number of input neurons not compatible with other parameters."
 
 
 def custom_seqence():
@@ -245,8 +249,8 @@ else:
 if FLAGS.model != 'lstm':
     # balance the input weights of store-recall signals with the rest of the bits
     sr_win_coeff = FLAGS.n_charac
-    increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*FLAGS.n_charac, :],
-                                    cell.w_in_init[:FLAGS.n_per_channel*FLAGS.n_charac, :] * sr_win_coeff)
+    increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*2, :],
+                                    cell.w_in_init[:FLAGS.n_per_channel*2, :] * sr_win_coeff)
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
@@ -273,7 +277,9 @@ if not FLAGS.onehot:
         n_values=FLAGS.n_charac,
         train_dict_size=FLAGS.train_dict_size, test_dict_size=FLAGS.test_dict_size,
         max_prob_active=FLAGS.max_in_bit_prob,
-        min_hamming_dist=FLAGS.min_hamming_dist)
+        min_hamming_dist=FLAGS.min_hamming_dist,
+        hamm_among_each_word=FLAGS.hamm_among_each_word,
+    )
     # NOTE: currently train_value_dict is empty and is not used anywhere in the simulations
     save_file({"train_value_dict": train_value_dict, "test_value_dict": test_value_dict},
               full_path, 'value_dicts', file_type='json')
@@ -288,12 +294,13 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
             value_dict=(test_value_dict if test else None) if not FLAGS.onehot else None,
             n_charac_duration=FLAGS.tau_char,
             n_neuron=FLAGS.n_in,
+            n_per_channel=FLAGS.n_per_channel,
             f0=FLAGS.f0 / 1000,  # convert frequency in Hz to kHz or probability of firing every dt=1ms step
             test_dict=test_value_dict if not FLAGS.onehot else None,
             max_prob_active=None,
             min_hamming_dist=FLAGS.min_hamming_dist if not FLAGS.onehot else None,
             distractors=FLAGS.distractors,
-            n_values=FLAGS.n_charac if FLAGS.onehot else None,
+            n_values=FLAGS.n_charac,
             onehot=FLAGS.onehot,
             no_distractors_during_recall=FLAGS.no_recall_distr,
         )
@@ -418,7 +425,7 @@ sess.run(tf.global_variables_initializer())
 # sess.run(increase_sr_weights)
 
 # w_in_init = sess.run(cell.w_in_var)
-# w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 3), FLAGS.n_per_channel, w_in_init.shape[1]))
+# w_in_init_avg = np.reshape(w_in_init, ((FLAGS.n_charac * 2 + 2), FLAGS.n_per_channel, w_in_init.shape[1]))
 # w_in_init_avg = np.mean(np.abs(w_in_init_avg), axis=(1, 2))
 # print(w_in_init_avg)
 
@@ -519,6 +526,7 @@ ramping_learning_rate_op = tf.assign(learning_rate,
 
 smallest_error = 999.
 
+pbar = tqdm(total=print_every, desc="training")
 train_bit_error = None
 t_train = 0
 t_ref = time()
@@ -546,50 +554,51 @@ for k_iter in range(FLAGS.n_iter):
     t_train = time() - t0
     train_errors.append(train_error)
     train_word_errors.append(train_word_error)
-
-    # Monitor the training with a validation set
-    t0 = time()
-    val_dict = get_data_dict(FLAGS.batch_val, test=True)
-    feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
-    # results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
-    results_values = sess.run(results_tensors, feed_dict=val_dict)
-    if FLAGS.preserve_state:
-        last_final_state_state_validation_pointer[0] = results_values['final_state']
-        # last_final_state_state_testing_pointer[0] = results_values['final_state']
-    t_run = time() - t0
-
-    # Storage of the results
-    test_loss_with_reg_list.append(results_values['loss_reg'])
-    test_loss_list.append(results_values['loss_recall'])
-    validation_error_list.append(results_values['recall_errors'])
-    validation_word_error_list.append(results_values['word_errors'])
-    training_time_list.append(t_train)
-    time_to_ref_list.append(time() - t_ref)
-    results = {
-        'error': validation_error_list[-1],
-        'word_error': validation_word_error_list[-1],
-        'loss': test_loss_list[-1],
-        'loss_with_reg': test_loss_with_reg_list[-1],
-        'loss_with_reg_list': test_loss_with_reg_list,
-        'val_error_list': validation_error_list,
-        'val_word_error_list': validation_word_error_list,
-        'train_error_list': train_errors,
-        'train_word_error_list': train_word_errors,
-        'loss_list': test_loss_list,
-        'time_to_ref': time_to_ref_list,
-        'training_time': training_time_list,
-        'tau_delay_list': tau_delay_list,
-        'flags': flag_dict,
-    }
+    pbar.update(1)
 
     if np.mod(k_iter, print_every) == 0:
+        pbar.close()
+        # Monitor the training with a validation set
+        t0 = time()
+        val_dict = get_data_dict(FLAGS.batch_val, test=True)
+        feed_dict_with_placeholder_container(val_dict, init_state_holder, last_final_state_state_validation_pointer[0])
+        # results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
+        results_values = sess.run(results_tensors, feed_dict=val_dict)
+        if FLAGS.preserve_state:
+            last_final_state_state_validation_pointer[0] = results_values['final_state']
+            # last_final_state_state_testing_pointer[0] = results_values['final_state']
+        t_run = time() - t0
+
+        # Storage of the results
+        test_loss_with_reg_list.append(results_values['loss_reg'])
+        test_loss_list.append(results_values['loss_recall'])
+        validation_error_list.append(results_values['recall_errors'])
+        validation_word_error_list.append(results_values['word_errors'])
+        training_time_list.append(t_train)
+        time_to_ref_list.append(time() - t_ref)
+        results = {
+            'error': validation_error_list[-1],
+            'word_error': validation_word_error_list[-1],
+            'loss': test_loss_list[-1],
+            'loss_with_reg': test_loss_with_reg_list[-1],
+            'loss_with_reg_list': test_loss_with_reg_list,
+            'val_error_list': validation_error_list,
+            'val_word_error_list': validation_word_error_list,
+            'train_error_list': train_errors,
+            'train_word_error_list': train_word_errors,
+            'loss_list': test_loss_list,
+            'time_to_ref': time_to_ref_list,
+            'training_time': training_time_list,
+            'tau_delay_list': tau_delay_list,
+            'flags': flag_dict,
+        }
 
         save_file(results, full_path, 'training_results', file_type='json')
 
-        if np.mean(validation_word_error_list[-print_every:]) < smallest_error:
+        if validation_word_error_list[-1] < smallest_error:
             early_stop_valid_results = {
-                'val_error': np.mean(validation_error_list[-print_every:]),
-                'val_word_error': np.mean(validation_word_error_list[-print_every:]),
+                'val_error': validation_error_list[-1],
+                'val_word_error': validation_word_error_list[-1],
                 'train_error': np.mean(train_errors[-print_every:]),
                 'train_word_error': np.mean(train_word_errors[-print_every:]),
                 'val_error_list': validation_error_list,
@@ -598,7 +607,7 @@ for k_iter in range(FLAGS.n_iter):
                 'train_word_error_list': train_word_errors,
                 'flags': flag_dict,
             }
-            smallest_error = np.mean(validation_word_error_list[-print_every:])
+            smallest_error = validation_word_error_list[-1]
             print("Early stopping checkpoint! Smallest validation error so far: " + str(smallest_error))
             save_file(early_stop_valid_results, full_path, 'early_stop_valid_results', file_type='json')
             saver.save(sess, os.path.join(full_path, 'model'))
@@ -606,10 +615,9 @@ for k_iter in range(FLAGS.n_iter):
             save_file(plot_results_values, full_path, 'plot_trajectory_data', 'pickle')
 
         print(("Iter {}, avg.error on the train set BIT: {:.2g} WORD: {:.2g} and "
-               "test set BIT: {:.2g} +- {:.2g} WORD: {:.2g}")
+               "test set BIT: {:.2g} WORD: {:.2g}")
               .format(k_iter, np.mean(train_errors[-print_every:]), np.mean(train_word_errors[-print_every:]),
-                      np.mean(validation_error_list[-print_every:]), np.std(validation_error_list[-print_every:]),
-                      np.mean(validation_word_error_list[-print_every:])))
+                      validation_error_list[-1], validation_word_error_list[-1]))
 
         def get_stats(v):
             if np.size(v) == 0:
@@ -623,23 +631,15 @@ for k_iter in range(FLAGS.n_iter):
             return np.min(v), np.max(v), np.mean(v), np.std(v), k_min, k_max
 
         firing_rate_stats = get_stats(results_values['av'] * 1000)
-        reg_coeff_stats = get_stats(results_values['adaptive_regularization_coeff'])
-
 
         if FLAGS.verbose:
             print('''
-            firing rate (Hz)  min {:.0f} ({}) \t max {:.0f} ({}) \t
-            average {:.0f} +- std {:.0f} (averaged over batches and time)
-            reg. coeff        min {:.2g} \t max {:.2g} \t average {:.2g} +- std {:.2g}
-
-            comput. time (s)  training {:.2g} \t validation {:.2g}
-            loss              classif. {:.2g} \t reg. loss  {:.2g}
+            firing rate (Hz)  min {:.0f} ({}) \t max {:.0f} ({}) \t average {:.0f} +- std {:.0f}
+            comput. time (s)  train {:.2g} \t valid {:.2g} \t loss: classif. {:.2g},  reg. loss  {:.2g}
             '''.format(
                 firing_rate_stats[0], firing_rate_stats[4], firing_rate_stats[1], firing_rate_stats[5],
                 firing_rate_stats[2], firing_rate_stats[3],
-                reg_coeff_stats[0], reg_coeff_stats[1], reg_coeff_stats[2], reg_coeff_stats[3],
-                t_train, t_run,
-                results_values['loss_recall'], results_values['loss_reg']
+                t_train, t_run, results_values['loss_recall'], results_values['loss_reg']
             ))
             # print(train_bit_error)
         if 0 < FLAGS.rewiring_connectivity:
@@ -695,7 +695,7 @@ for k_iter in range(FLAGS.n_iter):
         if np.mean(validation_word_error_list[-print_every:]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
             break
-
+        pbar = tqdm(total=print_every, desc="training")
 
 
 print('FINISHED IN {:.2g} s'.format(time() - t_ref))

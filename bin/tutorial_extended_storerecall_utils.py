@@ -264,7 +264,8 @@ def hamming2(s1, s2):
     return np.count_nonzero(s1 != s2)  # a faster solution
 
 
-def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5, max_prob_active=None):
+def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_dist=5, max_prob_active=None,
+                         hamm_among_each_word=True):
     """
     Generate dictionaries of binary words for training and testing.
     Ensures minimal hamming distance between test words and any training words.
@@ -277,7 +278,8 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
         test_candidate = random_binary_word(n_values, max_prob_active)
         valid = True
         for word in common_dict:
-            if hamming2(word, test_candidate) <= min_hamming_dist:
+            if (word == test_candidate).all() or \
+                    (hamm_among_each_word and hamming2(word, test_candidate) <= min_hamming_dist):
                 valid = False
                 break
         if valid:
@@ -381,9 +383,9 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
         #     print(word_sequence_choice)
         #     print("actual words in sequence")
         #     print(values_sequence)
-        repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
+        # repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
         inv_values_sequence = 1 - values_sequence
-        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence, inv_values_sequence))
+        input_sequence = np.vstack((storerecall_sequence, values_sequence, inv_values_sequence))
         # input_sequence.shape = (channels, length)
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
@@ -451,9 +453,9 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         #     print(word_sequence_choice)
         #     print("actual words in sequence")
         #     print(values_sequence)
-        repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
+        # repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
         inv_values_sequence = 1 - values_sequence
-        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence, inv_values_sequence))  # channels, length
+        input_sequence = np.vstack((storerecall_sequence, values_sequence, inv_values_sequence))  # channels, length
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
             store_seq = storerecall_sequence[0]
@@ -474,16 +476,15 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
 
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
                                        n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors,
-                                       n_values, onehot=False, no_distractors_during_recall=True):
+                                       n_values, n_per_channel, onehot=False, no_distractors_during_recall=True):
+    assert n_per_channel == n_neuron // (n_values * 2 + 2), "Redundant parameter check"
+    assert n_neuron % (n_values * 2 + 2) == 0,\
+        "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
     if onehot:
-        assert n_neuron % (n_values * 3) == 0,\
-            "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
         input_batch, target_batch, output_mask_batch, store_signal_to_batch_map = generate_onehot_storerecall_batch(
             batch_size, length, prob_storerecall, n_values, distractors)
     else:
         n_values = test_dict[0].shape[0]  # number of bits in a value (width of value word)
-        assert n_neuron % (n_values * 3) == 0,\
-            "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
         n_random_words = 2 * n_values if n_values >= 10 else n_values
         if value_dict is None:
             common_dict = []
@@ -508,8 +509,7 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
         input_batch, target_batch, output_mask_batch, store_signal_to_batch_map = generate_symbolic_storerecall_batch(
             batch_size, length, prob_storerecall, value_dict, distractors, no_distractors_during_recall)
 
-    n_neuron_per_channel = n_neuron // (n_values * 3)
-    input_batch = np.repeat(input_batch, n_neuron_per_channel, axis=1)
+    input_batch = np.repeat(input_batch, n_per_channel, axis=1)
     input_batch = np.repeat(input_batch, n_charac_duration, axis=2)
 
     input_rates_batch = input_batch * f0  # convert to firing rates (with firing rate being f0)
@@ -637,8 +637,8 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
 
     # PLOT STORE-RECALL SIGNAL SPIKES
     ax = ax_list[0]
-    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 3)
-    sr_num_channels = FLAGS.n_charac
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2)
+    sr_num_channels = 2
     sr_num_neurons = sr_num_channels*n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
     # raster_plot(ax, sr_spikes[:, ::subsample_input], linewidth=0.15)
@@ -893,7 +893,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     # ax = fig.add_subplot(gs[1, :])
     # ax.clear()
     # strip_right_top_axis(ax)
-    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 3)
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2)
     sr_num_channels = FLAGS.n_charac
     sr_num_neurons = sr_num_channels * n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
