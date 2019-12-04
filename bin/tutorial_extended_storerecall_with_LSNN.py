@@ -14,6 +14,7 @@ import datetime
 import os
 import socket
 from time import time
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +24,7 @@ from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_b
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
 
 from tutorial_extended_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch, \
-    update_plot, generate_spiking_storerecall_batch, generate_value_dicts, storerecall_error
+    update_plot, update_stp_plot, generate_spiking_storerecall_batch, generate_value_dicts, storerecall_error
 
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
@@ -104,6 +105,7 @@ tf.app.flags.DEFINE_bool('entropy_loss', True, 'include entropy in the loss')
 tf.app.flags.DEFINE_bool('b_out', False, 'include bias in readout')
 tf.app.flags.DEFINE_bool('onehot', False, 'use onehot style input')
 tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
+tf.app.flags.DEFINE_bool('no_recall_distr', True, 'do not show any input values during recall command')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -115,14 +117,14 @@ if FLAGS.reproduce == '560_extSR':
     FLAGS.test_dict_size = 20
     # FLAGS.min_hamming_dist = 5
     # FLAGS.tau_char = 100
-    FLAGS.f0 = 500
+    # FLAGS.f0 = 500
 
     # FLAGS.tau_a = 800
     FLAGS.beta = 4
     FLAGS.n_per_channel = 2
     FLAGS.n_in = (FLAGS.n_charac * 3) * FLAGS.n_per_channel
-    FLAGS.n_regular = 0
-    FLAGS.n_adaptive = 1000
+    # FLAGS.n_regular = 0
+    # FLAGS.n_adaptive = 1000
 
     FLAGS.lr_decay = 0.8
     FLAGS.batch_train = 512
@@ -207,6 +209,7 @@ try:
 except:
     print('Deprecation WARNING: with tensorflow >= 1.5 we should use FLAGS.flag_values_dict() to transform to dict')
     flag_dict = FLAGS.__flags
+print(json.dumps(flag_dict, indent=4))
 
 tau_a_spread = None
 # Generate the cell
@@ -292,6 +295,7 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
             distractors=FLAGS.distractors,
             n_values=FLAGS.n_charac if FLAGS.onehot else None,
             onehot=FLAGS.onehot,
+            no_distractors_during_recall=FLAGS.no_recall_distr,
         )
     # data_dict = {input_spikes: spk_data, input_nums: in_data, target_nums: target_data,
     data_dict = {input_spikes: spk_data if not FLAGS.analog_in else input_data,

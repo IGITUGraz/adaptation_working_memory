@@ -332,7 +332,8 @@ def onehot(idx_array):
     return onehot_array
 
 
-def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_values, distractors):
+def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_values, distractors,
+                                      no_distractors_during_recall=True):
     """
     Given the number of one-hot input channels for generate a batch of store-recall sequences
     with specified probability of store/recall
@@ -340,6 +341,7 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
     :param length: length of sequences
     :param prob_storerecall: probability of store/recall signal
     :param value_dict: dictionary of binary words to use
+    :param no_distractors_during_recall: should a distractor be shown during recall
     :return: mini-batch of store-recall sequences (batch_size, channels, length)
     """
     input_batch = []
@@ -391,7 +393,8 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
                 next_target = values_sequence[:, step]
             if recall_seq[step] == 1:
                 target_sequence[:, step] = next_target
-                input_sequence[n_values:, step] = 0
+                if no_distractors_during_recall:
+                    input_sequence[n_values:, step] = 0
 
         input_batch.append(input_sequence)
         target_batch.append(target_sequence)
@@ -400,13 +403,15 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
     return np.array(input_batch), np.array(target_batch), np.array(output_mask_batch), store_signal_to_batch_map
 
 
-def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict, distractors):
+def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, value_dict, distractors,
+                                        no_distractors_during_recall=True):
     """
     Given the value dictionary generate a batch of store-recall sequences with specified probability of store/recall
     :param batch_size: size of mini-batch
     :param length: length of sequences
     :param prob_storerecall: probability of store/recall signal
     :param value_dict: dictionary of binary words to use
+    :param no_distractors_during_recall: should a distractor be shown during recall
     :return: mini-batch of store-recall sequences (batch_size, channels, length)
     """
     n_values = value_dict[0].shape[0]  # number of bits in a value (width of value word)
@@ -457,7 +462,8 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
                 next_target = values_sequence[:, step]
             if recall_seq[step] == 1:
                 target_sequence[:, step] = next_target
-                input_sequence[n_values:, step] = 0
+                if no_distractors_during_recall:
+                    input_sequence[n_values:, step] = 0
 
         input_batch.append(input_sequence)
         target_batch.append(target_sequence)
@@ -468,7 +474,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
 
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
                                        n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors,
-                                       n_values, onehot=False):
+                                       n_values, onehot=False, no_distractors_during_recall=True):
     if onehot:
         assert n_neuron % (n_values * 3) == 0,\
             "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
@@ -500,7 +506,7 @@ def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, val
             # pbar.close()
             value_dict = np.array(common_dict)
         input_batch, target_batch, output_mask_batch, store_signal_to_batch_map = generate_symbolic_storerecall_batch(
-            batch_size, length, prob_storerecall, value_dict, distractors)
+            batch_size, length, prob_storerecall, value_dict, distractors, no_distractors_during_recall)
 
     n_neuron_per_channel = n_neuron // (n_values * 3)
     input_batch = np.repeat(input_batch, n_neuron_per_channel, axis=1)

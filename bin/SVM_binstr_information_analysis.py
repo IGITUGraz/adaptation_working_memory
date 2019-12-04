@@ -83,9 +83,14 @@ def decode_memory_with_SVC(dir_path, plot_filename):
 
 
 if __name__ == "__main__":
-
+    """
+    To compute decoding accuracy of a single run, use path argument like so:
+    PYTHONPATH=. python3 bin/SVM_binstr_information_analysis.py --path path/to/simulation/result
+    Otherwise use --dir argument to compute for every simulation in directory filtered with --filter
+    """
     parser = argparse.ArgumentParser(description='Try to predict labels based on network firing activity using SVMs.')
     parser.add_argument('--path', default=None, help='Path to directory that contains flags and plot data.')
+    parser.add_argument('--filter', default="_ExtSR_", help='When using --dir filter simulations by this string.')
     parser.add_argument('--dir', default='results/tutorial_extended_storerecall_with_LSNN',
                         help='Path to directory that contains flags and plot data.')
     parser.add_argument('--plot', default='plot_trajectory_data.pickle',
@@ -100,7 +105,7 @@ if __name__ == "__main__":
         delay_accs = []
         recall_accs = []
         for dir in dirs:
-            if "_ExtSR_" not in dir:
+            if args.filter not in dir:
                 continue
             print("Processing:", dir)
             try:
