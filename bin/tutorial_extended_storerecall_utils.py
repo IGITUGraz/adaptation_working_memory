@@ -842,11 +842,12 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     pbar.update(1)
     # print(ch_in.shape)
     n_group = FLAGS.n_charac  # size of a group in input channels. groups: store-recall, input, inv-input
-    assert ch_in.shape[2] == 3 * n_group, \
-        "ch_in.shape[2]" + str(ch_in.shape[2]) + " does not contain 3 groups of " + str(n_group)
-    store = np.mean(ch_in[:, :, :n_group // 2], axis=2)[..., np.newaxis]  # first half of first group
-    recall = np.mean(ch_in[:, :, n_group // 2:n_group], axis=2)[..., np.newaxis]  # second half of first group
-    norm_input = ch_in[:, :, n_group:2 * n_group]
+    assert ch_in.shape[2] == 2 * n_group + 2, \
+        "ch_in.shape[2]" + str(ch_in.shape[2]) + " does not contain 2 groups of " + str(n_group) + " + 2"
+
+    store = ch_in[:, :, 0][..., np.newaxis]  # first half of first group
+    recall = ch_in[:, :, 1][..., np.newaxis]  # second half of first group
+    norm_input = ch_in[:, :, 2:2 + n_group]
     pbar.update(1)
 
     store_idxs = np.nonzero(store)  # list of batch idxs, list of time idxs
@@ -861,7 +862,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     plt.ion()
     # fig, ax_list = plt.subplots(nrows=5, figsize=(6, 7.3), gridspec_kw={'wspace': 0, 'hspace': 0.2})
     fig = plt.figure(figsize=(7.3, 8), tight_layout=True)
-    gs = gridspec.GridSpec(7, 10, wspace=0.05, hspace=0.2)
+    gs = gridspec.GridSpec(13, 10, wspace=0.45, hspace=0.2)
     plt.subplots_adjust(left=0.13, right=0.96, top=0.99, bottom=0.06)
     pbar.update(1)
 
@@ -881,10 +882,14 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
 
     # PLOT INPUT PATTERNS
     for pi in range(norm_input.shape[1]):  # this should be 10
-        ax = fig.add_subplot(gs[0, pi])
+        ax = fig.add_subplot(gs[:2, pi])
         pattern_flat = norm_input[batch, pi]
         pattern = np.reshape(pattern_flat, (5, 4))
         ax.imshow(pattern, cmap='binary')
+        if pi in np.nonzero(store[batch])[0]:
+            for spine in ax.spines.values():
+                spine.set_edgecolor('orange')
+                spine.set_linewidth(4)
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -894,10 +899,11 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     # ax.clear()
     # strip_right_top_axis(ax)
     n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2)
-    sr_num_channels = FLAGS.n_charac
+    assert n_neuron_per_channel == FLAGS.n_per_channel
+    sr_num_channels = 2
     sr_num_neurons = sr_num_channels * n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
-    sr_spikes = sr_spikes[:, ::FLAGS.n_per_channel]
+    #sr_spikes = sr_spikes[:, ::FLAGS.n_per_channel]  # subsample to one neuron per channel
     # raster_plot(ax, sr_spikes, linewidth=spikewidth, max_spike=max_spike)
     # # sr_channel_neurons = sr_num_neurons // 2
     # # sr_channels = np.mean(sr_spikes.reshape(sr_spikes.shape[0], -1, sr_channel_neurons), axis=2)
@@ -911,7 +917,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     k_data = 0
     data = plot_result_values['input_spikes']
     d_name = 'input'
-    ax = fig.add_subplot(gs[1:3, :])
+    ax = fig.add_subplot(gs[2:6, :])
     ax.clear()
     strip_right_top_axis(ax)
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
@@ -924,13 +930,16 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         ax.get_yaxis().set_visible(False)
 
     data = data[batch]
-    data = data[:, sr_num_neurons::FLAGS.n_per_channel]
+    # data = data[:, sr_num_neurons::FLAGS.n_per_channel]  # subsample to one neuron per channel
+    data = data[:, sr_num_neurons:sr_num_neurons + FLAGS.n_charac*FLAGS.n_per_channel]
     # max_y_tick_label = str(data.shape[-1])
     # data = np.mean(data.reshape(data.shape[0], -1, n_neuron_per_channel), axis=2)
     # cax = ax.imshow(data.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
-    input_spikes = np.hstack((data, sr_spikes))
+    input_spikes = np.hstack((sr_spikes, np.zeros_like(sr_spikes), data))
     if not restonly:
         raster_plot(ax, input_spikes, linewidth=spikewidth, max_spike=max_spike)
+    presentation_steps = np.arange(input_spikes.shape[0])
+    ax.set_xticks([0, presentation_steps[-1] + 1])
     ax.set_ylabel(d_name, fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     # ax.set_yticklabels(['1', max_y_tick_label])
@@ -944,7 +953,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     k_data = 1
     data = plot_result_values['z']
     d_name = 'ALIF'
-    ax = fig.add_subplot(gs[3, :])
+    ax = fig.add_subplot(gs[6:8, :])
     ax.clear()
     strip_right_top_axis(ax)
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
@@ -960,8 +969,8 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     data = data[batch]
     data = data[:, FLAGS.n_regular::subsample_rnn]
 
-    cell_select = np.linspace(start=0, stop=data.shape[1] - 1, dtype=int)
-    data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
+    # cell_select = np.linspace(start=0, stop=data.shape[1] - 1, dtype=int)
+    # data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
     if not restonly:
         raster_plot(ax, data, linewidth=spikewidth, max_spike=max_spike)
 
@@ -974,7 +983,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     pbar.update(1)
 
     if not spikesonly:
-        ax = fig.add_subplot(gs[-3, :])
+        ax = fig.add_subplot(gs[8:10, :])
         ax.clear()
         strip_right_top_axis(ax)
         # ax.grid(color='black', alpha=0.15, linewidth=0.4)
@@ -984,14 +993,15 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         vars = np.var(sub_data, axis=0)
         cell_with_max_var = np.argsort(vars)[::-1]
         presentation_steps = np.arange(sub_data.shape[0])
-        ax.plot(sub_data[:, cell_with_max_var[::10]], color='r', alpha=0.4, linewidth=1)
+        # ax.plot(sub_data[:, cell_with_max_var[::10]], color='r', alpha=0.4, linewidth=1)
+        ax.plot(sub_data[:, cell_with_max_var[::15]], alpha=0.7, linewidth=1)
         ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
                  np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
         hide_bottom_axis(ax)
         pbar.update(1)
 
         # plot targets
-        ax = fig.add_subplot(gs[-2, :])
+        ax = fig.add_subplot(gs[10, :])
         ax.clear()
         strip_right_top_axis(ax)
         # plot softmax of psp-s per dt for more intuitive monitoring
@@ -999,24 +1009,30 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         output2 = plot_result_values['out_plot'][batch, :, :]
         presentation_steps = np.arange(output2.shape[0])
         ax.set_yticks([0, 0.5, 1])
+        ax.set_yticklabels(['0', '', '1'])
         # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-        ax.set_ylabel('output', fontsize=fs)
+        ax.set_ylabel('sigmoid\noutputs', fontsize=fs)
         ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-        ax.plot(output2, label='output', alpha=0.7)
+        ax.plot(output2, label='output', alpha=0.7, linewidth=1)
         ax.axis([0, presentation_steps[-1] + 1, -0.1, 1.1])
         # ax.legend(handles=[line_output2], loc='lower center', fontsize=7,
         #           bbox_to_anchor=(0.5, -0.1), ncol=3)
-
-        ax.set_xlabel('time in ms', fontsize=fs)
+        ax.set_xticks([0, presentation_steps[-1] + 1])
+        ax.set_xticklabels(['0', str(int((presentation_steps[-1] + 1) / 1000))])
+        ax.set_xlabel('time in s', fontsize=fs)
 
         # PLOT OUTPUT PATTERNS
         shp = output2.shape
         ch_out = np.mean(np.reshape(output2, (-1, FLAGS.tau_char, shp[1])), axis=1)  # avg per char step
         for pi in range(norm_input.shape[1]):  # this should be 10
-            ax = fig.add_subplot(gs[-1, pi])
+            ax = fig.add_subplot(gs[11:, pi])
             pattern_flat = ch_out[pi]
             pattern = np.reshape(pattern_flat, (5, 4))
             ax.imshow(pattern, cmap='binary')
+            if pi in np.nonzero(recall[batch])[0]:
+                for spine in ax.spines.values():
+                    spine.set_edgecolor('green')
+                    spine.set_linewidth(4)
             ax.set_xticks([])
             ax.set_yticks([])
 
@@ -1050,6 +1066,6 @@ if __name__ == "__main__":
     print("Attempting to load model from " + args.path)
 
     # pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=args.spikesonly)
-    # pretty_560_plot(args.path, custom_plot=args.customplot)
-    pretty_560_plot(args.path, custom_plot=args.customplot, restonly=True)
-    pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=True)
+    pretty_560_plot(args.path, custom_plot=args.customplot)
+    # pretty_560_plot(args.path, custom_plot=args.customplot, restonly=True)
+    # pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=True)
