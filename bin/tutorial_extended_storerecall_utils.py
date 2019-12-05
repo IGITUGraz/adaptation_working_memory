@@ -273,6 +273,7 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
     """
     from tqdm import tqdm
     common_dict = []
+    fail_counter = 0
     pbar = tqdm(total=train_dict_size + test_dict_size)
     while len(common_dict) < train_dict_size + test_dict_size:
         test_candidate = random_binary_word(n_values, max_prob_active)
@@ -281,8 +282,14 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
             if (word == test_candidate).all() or \
                     (hamm_among_each_word and hamming2(word, test_candidate) <= min_hamming_dist):
                 valid = False
+                fail_counter += 1
                 break
+        if fail_counter > 1000:
+            np.random.seed(np.random.randint(2**23 - 1))
+            fail_counter = 0
+            continue
         if valid:
+            fail_counter = 0
             common_dict.append(test_candidate)
             pbar.update(1)
     pbar.close()
@@ -383,9 +390,9 @@ def generate_onehot_storerecall_batch(batch_size, length, prob_storerecall, n_va
         #     print(word_sequence_choice)
         #     print("actual words in sequence")
         #     print(values_sequence)
-        # repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
+        repeated_storerecall_sequence = np.repeat(storerecall_sequence, 2, axis=0)
         inv_values_sequence = 1 - values_sequence
-        input_sequence = np.vstack((storerecall_sequence, values_sequence, inv_values_sequence))
+        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence, inv_values_sequence))
         # input_sequence.shape = (channels, length)
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
@@ -453,9 +460,10 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
         #     print(word_sequence_choice)
         #     print("actual words in sequence")
         #     print(values_sequence)
-        # repeated_storerecall_sequence = np.repeat(storerecall_sequence, n_values // 2, axis=0)
+        repeated_storerecall_sequence = np.repeat(storerecall_sequence, 2, axis=0)
         inv_values_sequence = 1 - values_sequence
-        input_sequence = np.vstack((storerecall_sequence, values_sequence, inv_values_sequence))  # channels, length
+        input_sequence = np.vstack((repeated_storerecall_sequence, values_sequence, inv_values_sequence))
+        # input_sequence.shape = channels, length
         target_sequence = np.zeros_like(values_sequence)
         for step in range(length):
             store_seq = storerecall_sequence[0]
@@ -477,8 +485,7 @@ def generate_symbolic_storerecall_batch(batch_size, length, prob_storerecall, va
 def generate_spiking_storerecall_batch(batch_size, length, prob_storerecall, value_dict, n_charac_duration,
                                        n_neuron, f0, test_dict, max_prob_active, min_hamming_dist, distractors,
                                        n_values, n_per_channel, onehot=False, no_distractors_during_recall=True):
-    assert n_per_channel == n_neuron // (n_values * 2 + 2), "Redundant parameter check"
-    assert n_neuron % (n_values * 2 + 2) == 0,\
+    assert n_neuron / (n_values * 2 + 2 * 2) == n_per_channel,\
         "Number of input neurons {} not divisible by number of input channels {}".format(n_neuron, n_values)
     if onehot:
         input_batch, target_batch, output_mask_batch, store_signal_to_batch_map = generate_onehot_storerecall_batch(
@@ -637,8 +644,8 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=None, n_max_neuro
 
     # PLOT STORE-RECALL SIGNAL SPIKES
     ax = ax_list[0]
-    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2)
-    sr_num_channels = 2
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2 * 2)
+    sr_num_channels = 2 * 2
     sr_num_neurons = sr_num_channels*n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
     # raster_plot(ax, sr_spikes[:, ::subsample_input], linewidth=0.15)
@@ -898,9 +905,9 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     # ax = fig.add_subplot(gs[1, :])
     # ax.clear()
     # strip_right_top_axis(ax)
-    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2)
+    n_neuron_per_channel = FLAGS.n_in // (FLAGS.n_charac * 2 + 2 * 2)
     assert n_neuron_per_channel == FLAGS.n_per_channel
-    sr_num_channels = 2
+    sr_num_channels = 2 * 2
     sr_num_neurons = sr_num_channels * n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
     #sr_spikes = sr_spikes[:, ::FLAGS.n_per_channel]  # subsample to one neuron per channel

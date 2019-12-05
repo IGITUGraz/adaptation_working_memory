@@ -30,7 +30,7 @@ from tutorial_extended_storerecall_utils import generate_storerecall_data, error
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
-    feed_dict_with_placeholder_container, exp_convolve, ALIF, STP
+    feed_dict_with_placeholder_container, exp_convolve, ALIF, STP, FastALIF
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
 
 script_name = os.path.basename(__file__)[:-3]
@@ -45,8 +45,8 @@ tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from
 tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
 tf.app.flags.DEFINE_integer('batch_train', 512, 'batch size fo the validation set')
-tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
-tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
+tf.app.flags.DEFINE_integer('batch_val', 512, 'batch size of the validation set')
+tf.app.flags.DEFINE_integer('batch_test', 512, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 20, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 200, 'number of spiking input units. Must be divisable by (n_charac*2)')
 tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
@@ -108,6 +108,7 @@ tf.app.flags.DEFINE_bool('onehot', False, 'use onehot style input')
 tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
 tf.app.flags.DEFINE_bool('no_recall_distr', True, 'do not show any input values during recall command')
 tf.app.flags.DEFINE_bool('hamm_among_each_word', True, 'enforce hamming dist also among each test string')
+tf.app.flags.DEFINE_bool('FastALIF', True, 'use simpler ALIF model without synaptic delay')
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -122,14 +123,14 @@ if FLAGS.reproduce == '560_extSR':
     # FLAGS.f0 = 500
 
     # FLAGS.tau_a = 800
-    FLAGS.beta = 4
-    FLAGS.n_per_channel = 2
-    FLAGS.n_in = (FLAGS.n_charac * 2 + 2) * FLAGS.n_per_channel
+    # FLAGS.beta = 4
+    # FLAGS.n_per_channel = 2
+    FLAGS.n_in = (FLAGS.n_charac * 2 + 2 * 2) * FLAGS.n_per_channel
     # FLAGS.n_regular = 0
     # FLAGS.n_adaptive = 1000
 
     FLAGS.lr_decay = 0.8
-    FLAGS.batch_train = 512
+    # FLAGS.batch_train = 512
     FLAGS.entropy_loss = True
     FLAGS.distractors = True
     FLAGS.do_plot = True
@@ -141,7 +142,7 @@ if FLAGS.batch_test is None:
     FLAGS.batch_test = FLAGS.batch_train
 
 assert FLAGS.model in ['lsnn', 'stp', 'lstm']
-assert FLAGS.n_in == (FLAGS.n_charac * 2 + 2) * FLAGS.n_per_channel,\
+assert FLAGS.n_in == (FLAGS.n_charac * 2 + 2 * 2) * FLAGS.n_per_channel,\
     "Number of input neurons not compatible with other parameters."
 
 
@@ -231,7 +232,13 @@ if FLAGS.model == 'lsnn':
                 rewiring_connectivity=FLAGS.rewiring_connectivity,
                 in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
                 dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
-                )
+                ) if not FLAGS.FastALIF else \
+        FastALIF(n_in=FLAGS.n_in, n_rec=n_total_neurons, tau=tau_v, n_delay=FLAGS.n_delay,
+             n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
+             rewiring_connectivity=FLAGS.rewiring_connectivity,
+             in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+             dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
+             )
 elif FLAGS.model == 'stp':
     cell = STP(
         n_in=FLAGS.n_in, n_rec=n_total_neurons, tau=tau_v,
@@ -249,8 +256,8 @@ else:
 if FLAGS.model != 'lstm':
     # balance the input weights of store-recall signals with the rest of the bits
     sr_win_coeff = FLAGS.n_charac
-    increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*2, :],
-                                    cell.w_in_init[:FLAGS.n_per_channel*2, :] * sr_win_coeff)
+    increase_sr_weights = tf.assign(cell.w_in_var[:FLAGS.n_per_channel*2*2, :],
+                                    cell.w_in_init[:FLAGS.n_per_channel*2*2, :] * sr_win_coeff)
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
