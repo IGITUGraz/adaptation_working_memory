@@ -613,6 +613,7 @@ for k_iter in range(FLAGS.n_iter):
                 'train_error_list': train_errors,
                 'train_word_error_list': train_word_errors,
                 'flags': flag_dict,
+                'k_iter': k_iter,
             }
             smallest_error = validation_word_error_list[-1]
             print("Early stopping checkpoint! Smallest validation error so far: " + str(smallest_error))
@@ -699,7 +700,7 @@ for k_iter in range(FLAGS.n_iter):
                                     str(k_iter) + '.pdf')
             fig.savefig(tmp_path, format='pdf')
 
-        if np.mean(validation_word_error_list[-print_every:]) < FLAGS.stop_crit:
+        if np.mean(validation_word_error_list[-1]) < FLAGS.stop_crit:
             print('LESS THAN ' + str(FLAGS.stop_crit) + ' ERROR ACHIEVED - STOPPING - SOLVED at epoch ' + str(k_iter))
             break
         pbar = tqdm(total=print_every, desc="training")

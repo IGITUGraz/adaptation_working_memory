@@ -273,7 +273,6 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
     """
     from tqdm import tqdm
     common_dict = []
-    fail_counter = 0
     pbar = tqdm(total=train_dict_size + test_dict_size)
     while len(common_dict) < train_dict_size + test_dict_size:
         test_candidate = random_binary_word(n_values, max_prob_active)
@@ -282,14 +281,8 @@ def generate_value_dicts(n_values, train_dict_size, test_dict_size, min_hamming_
             if (word == test_candidate).all() or \
                     (hamm_among_each_word and hamming2(word, test_candidate) <= min_hamming_dist):
                 valid = False
-                fail_counter += 1
                 break
-        if fail_counter > 1000:
-            np.random.seed(np.random.randint(2**23 - 1))
-            fail_counter = 0
-            continue
         if valid:
-            fail_counter = 0
             common_dict.append(test_candidate)
             pbar.update(1)
     pbar.close()
@@ -819,6 +812,41 @@ def avg_firingrates_during_delay(data_path):
     return firing_rates
 
 
+# Covert data units to points
+def height_from_data_units(height, axis, reference='y', value_range=None):
+    fig = axis.get_figure()
+    if reference == 'x':
+        length = fig.bbox_inches.width * axis.get_position().width
+        if value_range is None:
+            value_range = np.diff(axis.get_xlim())
+    elif reference == 'y':
+        length = fig.bbox_inches.height * axis.get_position().height
+        if value_range is None:
+            value_range = np.diff(axis.get_ylim())
+    # Convert length to points
+    length *= 72
+    # Scale height to value range
+    ms = height * (length / value_range)
+    return ms
+
+
+# This function is called for every subplot that you want to plot.
+# Spikes are of the shape: (n_neurons, time), ax is an axes object.
+def plot_spikes(ax, spikes, linewidth=None, max_spike=None, color='black'):
+    import matplotlib.ticker as ticker
+    n_neurons = spikes.shape[0]
+    neurons = np.arange(n_neurons) + 1
+    sps = spikes * (neurons.reshape(len(spikes), 1))
+    sps[sps == 0.] = -10
+    sps -= 1
+    marker_size = height_from_data_units(0.7, ax, value_range=n_neurons)
+    for neuron in range(n_neurons):
+        ax.plot(range(spikes.shape[1]), sps[neuron, :], marker='|', linestyle='none', color=color,
+                markersize=marker_size, markeredgewidth=0.5)
+    ax.set(ylim=(-0.5, n_neurons))
+    ax.yaxis.set_major_locator(ticker.FixedLocator([0, n_neurons]))
+
+
 def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=False):
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
@@ -849,18 +877,22 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     pbar.update(1)
     # print(ch_in.shape)
     n_group = FLAGS.n_charac  # size of a group in input channels. groups: store-recall, input, inv-input
-    assert ch_in.shape[2] == 2 * n_group + 2, \
+    assert ch_in.shape[2] == 2 * n_group + 2 * 2, \
         "ch_in.shape[2]" + str(ch_in.shape[2]) + " does not contain 2 groups of " + str(n_group) + " + 2"
 
-    store = ch_in[:, :, 0][..., np.newaxis]  # first half of first group
-    recall = ch_in[:, :, 1][..., np.newaxis]  # second half of first group
-    norm_input = ch_in[:, :, 2:2 + n_group]
+    store = np.mean(ch_in[:, :, 0:2], axis=2)[..., np.newaxis]  # first half of first group
+    recall = np.mean(ch_in[:, :, 2:4], axis=2)[..., np.newaxis]  # second half of first group
+    norm_input = ch_in[:, :, 4:4 + n_group]
     pbar.update(1)
 
     store_idxs = np.nonzero(store)  # list of batch idxs, list of time idxs
     recall_idxs = np.nonzero(recall)  # list of batch idxs, list of time idxs
     delays = [r - s for s, r in zip(store_idxs[1], recall_idxs[1])]
-    long_delay_batch = np.argmax(delays)
+    # long_delay_batch = np.argmax(delays)
+    long_delay_batch = np.argpartition(delays, 4)[-1]
+    # print("argmax", long_delay_batch)
+    # print("np.argpartition(delays, -4)[-4:]", np.argpartition(delays, -4)[-4:])
+    # print("np.argsort(delays)[-4:]", np.argsort(delays)[-4:])
 
     start_time = datetime.datetime.now()
     filename = os.path.join(data_path, 'figure_test' + str(long_delay_batch) + '_' + start_time.strftime("%H%M"))
@@ -876,8 +908,6 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     plot_result_values = data
     batch = long_delay_batch
 
-    # subsample_rnn = FLAGS.n_per_channel
-    subsample_rnn = 1
     ylabel_x = -0.11
     ylabel_y = 0.5
     fs = 10
@@ -911,7 +941,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     sr_num_neurons = sr_num_channels * n_neuron_per_channel
     sr_spikes = plot_result_values['input_spikes'][batch, :, :sr_num_neurons]
     #sr_spikes = sr_spikes[:, ::FLAGS.n_per_channel]  # subsample to one neuron per channel
-    # raster_plot(ax, sr_spikes, linewidth=spikewidth, max_spike=max_spike)
+    # plot_spikes(ax, sr_spikes, linewidth=spikewidth, max_spike=max_spike)
     # # sr_channel_neurons = sr_num_neurons // 2
     # # sr_channels = np.mean(sr_spikes.reshape(sr_spikes.shape[0], -1, sr_channel_neurons), axis=2)
     # # cax = ax.imshow(sr_channels.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
@@ -928,12 +958,12 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     ax.clear()
     strip_right_top_axis(ax)
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    hide_bottom_axis(ax)
+    ax.set_yticklabels([])
     if spikesonly:
-        hide_bottom_axis(ax)
         ax.spines['left'].set_visible(False)
         ax.set_xticklabels([])
         ax.get_xaxis().set_visible(False)
-        ax.set_yticks([])
         ax.get_yaxis().set_visible(False)
 
     data = data[batch]
@@ -944,7 +974,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     # cax = ax.imshow(data.T, origin='lower', aspect='auto', cmap='viridis', interpolation='none')
     input_spikes = np.hstack((sr_spikes, np.zeros_like(sr_spikes), data))
     if not restonly:
-        raster_plot(ax, input_spikes, linewidth=spikewidth, max_spike=max_spike)
+        plot_spikes(ax, input_spikes[:, ::FLAGS.n_per_channel].T, linewidth=spikewidth, max_spike=max_spike)
     presentation_steps = np.arange(input_spikes.shape[0])
     ax.set_xticks([0, presentation_steps[-1] + 1])
     ax.set_ylabel(d_name, fontsize=fs)
@@ -965,8 +995,8 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     strip_right_top_axis(ax)
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     hide_bottom_axis(ax)
+    ax.set_yticklabels([])
     if spikesonly:
-        hide_bottom_axis(ax)
         ax.spines['left'].set_visible(False)
         ax.set_xticklabels([])
         ax.get_xaxis().set_visible(False)
@@ -974,16 +1004,16 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         ax.get_yaxis().set_visible(False)
 
     data = data[batch]
-    data = data[:, FLAGS.n_regular::subsample_rnn]
+    data = data[:, FLAGS.n_regular::FLAGS.n_per_channel]
 
     # cell_select = np.linspace(start=0, stop=data.shape[1] - 1, dtype=int)
     # data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
     if not restonly:
-        raster_plot(ax, data, linewidth=spikewidth, max_spike=max_spike)
+        plot_spikes(ax, data.T, linewidth=spikewidth, max_spike=max_spike)
 
     ax.set_ylabel(d_name, fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.set_yticklabels(['1', str(data.shape[-1])])
+    # ax.set_yticklabels(['1', str(data.shape[-1])])
     if spikesonly:
         extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
         fig.savefig(filename + '_SPIKES_ALIF.png', bbox_inches=extent, dpi=1000)
@@ -1051,10 +1081,12 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     if spikesonly:
         filename += '_SPIKES'
         fig.savefig(filename + '.png', format='png')
-    fig.savefig(filename + '.pdf', format='pdf')
+    else:
+        fig.savefig(filename + '.pdf', format='pdf')
+        fig.savefig(filename + '.png', format='png', dpi=1000)
     pbar.update(1)
     pbar.close()
-    print("Longest delay", delays[long_delay_batch], "in batch", long_delay_batch)
+    print("Longest delay", delays[batch], "in batch", batch)
 
 
 if __name__ == "__main__":

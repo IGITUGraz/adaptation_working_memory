@@ -28,11 +28,11 @@ def decode_memory_with_SVC(dir_path, plot_filename):
     ch_in = ch_in > 0.0  # convert to binary
     # print(ch_in.shape)
     n_group = FLAGS.n_charac  # size of a group in input channels. groups: store-recall, input, inv-input
-    assert ch_in.shape[2] == 3 * n_group,\
+    assert ch_in.shape[2] == 2 * n_group + 2 * 2,\
         "ch_in.shape[2]" + str(ch_in.shape[2]) + " does not contain 3 groups of " + str(n_group)
-    store = np.mean(ch_in[:, :, :n_group//2], axis=2)[..., np.newaxis]  # first half of first group
-    recall = np.mean(ch_in[:, :, n_group//2:n_group], axis=2)[..., np.newaxis]  # second half of first group
-    norm_input = ch_in[:, :, n_group:2*n_group]
+    store = np.mean(ch_in[:, :, :2], axis=2)[..., np.newaxis]  # first half of first group
+    recall = np.mean(ch_in[:, :, 2:4], axis=2)[..., np.newaxis]  # second half of first group
+    norm_input = ch_in[:, :, 4:4+n_group]
     # print("store", store.shape)
     # print("recall", recall.shape)
     # print("norm_input", norm_input.shape)
@@ -101,7 +101,11 @@ if __name__ == "__main__":
         print("Attempting to load model from " + args.path)
         res = decode_memory_with_SVC(dir_path=args.path, plot_filename=args.plot)
     else:
-        dirs = [name for name in os.listdir(args.dir) if os.path.isdir(os.path.join(args.dir, name))]
+        # dirs = [name for name in os.listdir(args.dir) if os.path.isdir(os.path.join(args.dir, name))]
+        dirs = ['2019_12_05_10_17_41_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_GPU_0',
+                '2019_12_05_17_13_18_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_GPU_1',
+                '2019_12_05_10_18_23_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_0',
+                '2019_12_05_17_18_55_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_0']
         delay_accs = []
         recall_accs = []
         for dir in dirs:
