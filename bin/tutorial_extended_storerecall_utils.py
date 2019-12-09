@@ -1004,7 +1004,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         ax.get_yaxis().set_visible(False)
 
     data = data[batch]
-    data = data[:, FLAGS.n_regular::FLAGS.n_per_channel]
+    data = data[:, FLAGS.n_regular::FLAGS.n_per_channel*10]
 
     # cell_select = np.linspace(start=0, stop=data.shape[1] - 1, dtype=int)
     # data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
@@ -1105,6 +1105,6 @@ if __name__ == "__main__":
     print("Attempting to load model from " + args.path)
 
     # pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=args.spikesonly)
-    pretty_560_plot(args.path, custom_plot=args.customplot)
-    # pretty_560_plot(args.path, custom_plot=args.customplot, restonly=True)
-    # pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=True)
+    # pretty_560_plot(args.path, custom_plot=args.customplot)
+    pretty_560_plot(args.path, custom_plot=args.customplot, restonly=True)
+    pretty_560_plot(args.path, custom_plot=args.customplot, spikesonly=True)
