@@ -44,17 +44,17 @@ tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored result
 tf.app.flags.DEFINE_string('reproduce', '', 'set flags to reproduce results from paper [560_A, ...]')
 tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
-tf.app.flags.DEFINE_integer('batch_train', 512, 'batch size fo the validation set')
+tf.app.flags.DEFINE_integer('batch_train', 256, 'batch size fo the validation set')
 tf.app.flags.DEFINE_integer('batch_val', 512, 'batch size of the validation set')
 tf.app.flags.DEFINE_integer('batch_test', 512, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 20, 'number of characters in the recall task')
-tf.app.flags.DEFINE_integer('n_in', 200, 'number of spiking input units. Must be divisable by (n_charac*2)')
+tf.app.flags.DEFINE_integer('n_in', 88, 'number of spiking input units. Must be divisable by (n_charac*2)')
 tf.app.flags.DEFINE_integer('min_hamming_dist', 5, 'minimal hamming distance in bits between test and training words')
 tf.app.flags.DEFINE_integer('train_dict_size', 0, 'Not used! (use only a constrained word dictionary for training')
 tf.app.flags.DEFINE_integer('test_dict_size', 20, 'Num. of test dict. words (min_hamming_dist away from training data)')
 tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 1000, 'number of controller units')
-tf.app.flags.DEFINE_integer('f0', 500, 'input firing rate')
+tf.app.flags.DEFINE_integer('n_adaptive', 500, 'number of controller units')
+tf.app.flags.DEFINE_integer('f0', 400, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('n_iter', 4000, 'number of iterations')
@@ -62,13 +62,13 @@ tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 10, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 4, 'Expected delay in character steps. Must be <= seq_len - 2')
-tf.app.flags.DEFINE_integer('tau_char', 100, 'Duration of symbols')
+tf.app.flags.DEFINE_integer('tau_char', 200, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 20, 'Decay every')
 tf.app.flags.DEFINE_integer('n_per_channel', 2, 'input spiking neurons per input channel')
 ##
-tf.app.flags.DEFINE_float('max_in_bit_prob', None, 'Stopping criterion. Stops training if error goes below this value')
+tf.app.flags.DEFINE_float('max_in_bit_prob', 0.2, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
 tf.app.flags.DEFINE_float('beta', 4, 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 800, 'Mikolov model alpha - threshold decay')
@@ -114,26 +114,24 @@ assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
 if FLAGS.reproduce == '560_extSR':
     FLAGS.model = 'lsnn'
+    FLAGS.n_in = (FLAGS.n_charac * 2 + 2 * 2) * FLAGS.n_per_channel
     # FLAGS.n_charac = 20
     # FLAGS.seq_len = 10
     # FLAGS.seq_delay = 4
-    FLAGS.test_dict_size = 20
+    # FLAGS.test_dict_size = 20
     # FLAGS.min_hamming_dist = 5
-    # FLAGS.tau_char = 100
-    # FLAGS.f0 = 500
-
+    # FLAGS.tau_char = 200
+    # FLAGS.f0 = 400
     # FLAGS.tau_a = 800
     # FLAGS.beta = 4
     # FLAGS.n_per_channel = 2
-    FLAGS.n_in = (FLAGS.n_charac * 2 + 2 * 2) * FLAGS.n_per_channel
     # FLAGS.n_regular = 0
-    # FLAGS.n_adaptive = 1000
-
-    FLAGS.lr_decay = 0.8
-    # FLAGS.batch_train = 512
-    FLAGS.entropy_loss = True
-    FLAGS.distractors = True
-    FLAGS.do_plot = True
+    # FLAGS.n_adaptive = 500
+    # FLAGS.lr_decay = 0.8
+    # FLAGS.batch_train = 256
+    # FLAGS.entropy_loss = True
+    # FLAGS.distractors = True
+    # FLAGS.do_plot = True
 
 
 if FLAGS.batch_val is None:

@@ -102,10 +102,15 @@ if __name__ == "__main__":
         res = decode_memory_with_SVC(dir_path=args.path, plot_filename=args.plot)
     else:
         # dirs = [name for name in os.listdir(args.dir) if os.path.isdir(os.path.join(args.dir, name))]
-        dirs = ['2019_12_05_10_17_41_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_GPU_0',
-                '2019_12_05_17_13_18_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_GPU_1',
-                '2019_12_05_10_18_23_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_0',
-                '2019_12_05_17_18_55_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_0']
+        # dirs = ['2019_12_05_10_17_41_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_GPU_0',
+        #         '2019_12_05_17_13_18_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_GPU_1',
+        #         '2019_12_05_10_18_23_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_0',
+        #         '2019_12_05_17_18_55_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG2_0']
+        dirs = ['2019_12_08_03_51_50_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG3_3',
+                '2019_12_07_00_12_39_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG3_1',
+                '2019_12_08_13_28_08_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG3_4',
+                '2019_12_07_09_58_07_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG3_2',
+                '2019_12_06_10_27_42_FastALIF_seqlen10_seqdelay4_in88_R0_A500_lr0.01_tauchar200_comment560_ExtSR_FastLONG3_0']
         delay_accs = []
         recall_accs = []
         for dir in dirs:
