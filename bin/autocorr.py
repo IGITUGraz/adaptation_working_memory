@@ -248,7 +248,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Calculate autocorrelation and plot à la Stokes 2018.')
     parser.add_argument('path', help='Path to directory that contains flags and plot data.')
-    parser.add_argument('plot', help='Filename of pickle file containing data for plotting.')
+    parser.add_argument('--plot', help='Filename of pickle file containing data for plotting.',
+                        default='plot_trajectory_data.pickle')
     parser.add_argument("--meanhist", help="string to match when doing mean histogram over many runs")
     args = parser.parse_args()
 
@@ -304,8 +305,9 @@ if __name__ == "__main__":
         plt.ylabel("percentage of cells")
         # plt.ylabel("num. of cells")
         plt.xlabel("intrinsic time constant (ms)")
-        plt_path = os.path.join(args.path, 'autocorr_merged_hist_{}.pdf'.format(args.meanhist))
-        plt.savefig(plt_path, format='pdf')
+        plt_path = os.path.join(args.path, 'autocorr_merged_hist_{}'.format(args.meanhist))
+        plt.savefig(plt_path+'.pdf', format='pdf')
+        plt.savefig(plt_path+'.png', format='png')
     else:
         print("Attempting to load model from " + args.path)
 

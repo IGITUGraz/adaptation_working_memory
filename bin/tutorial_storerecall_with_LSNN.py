@@ -161,7 +161,7 @@ if FLAGS.reproduce == '560_table':
     FLAGS.batch_train = 64
     FLAGS.batch_val = 64
     FLAGS.batch_test = 64
-    FLAGS.beta = 1
+    # FLAGS.beta = 1
     FLAGS.thr = 0.01
     FLAGS.n_regular = 0
     FLAGS.n_adaptive = 60
