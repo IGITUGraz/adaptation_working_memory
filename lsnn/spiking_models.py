@@ -469,7 +469,7 @@ class FastALIF(LIF):
                  tau_adaptation=200., beta=1.6,
                  rewiring_connectivity=-1, dampening_factor=0.3,
                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
-                 add_current=0., thr_min=0.005):
+                 add_current=0., thr_min=0.005, stop_z_gradients=False):
         """
         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
 
@@ -546,6 +546,7 @@ class FastALIF(LIF):
         # b_max = (thr_min - thr) / beta
         # b_max[~np.isfinite(b_max)] = np.finfo(b_max.dtype).max
         # self.b_max = b_max
+        self.stop_z_gradients = stop_z_gradients
 
     @property
     def output_size(self):
@@ -573,11 +574,9 @@ class FastALIF(LIF):
 
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
 
-        i_in = tf.matmul(inputs, self.w_in_val)
-        i_rec = tf.matmul(state.z, self.w_rec_val)
-        i_t = i_in + i_rec + self.add_current
+        z = state.z
 
-        new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
+        new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * z
         # # in case of negatively adapting threshold (transient increase in excitability of ELIF neurons):
         # # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
         # clipped_new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
@@ -585,13 +584,19 @@ class FastALIF(LIF):
         # clipped_thr = self.thr + clipped_new_b * self.beta
         # thr = tf.where(tf.cast(tf.ones([tf.shape(inputs)[0], 1]) * self.elifs, dtype=tf.bool), clipped_thr, thr)
 
-        I_reset = state.z * thr * self.dt
+        if self.stop_z_gradients:
+            z = tf.stop_gradient(z)
+
+        i_in = tf.matmul(inputs, self.w_in_val)
+        i_rec = tf.matmul(z, self.w_rec_val)
+        i_t = i_in + i_rec + self.add_current
+        I_reset = z * thr * self.dt
 
         new_v = self._decay * state.v + (1 - self._decay) * i_t - I_reset
 
         # Spike generation
         is_refractory = tf.greater(state.r, .1)
-        zeros_like_spikes = tf.zeros_like(state.z)
+        zeros_like_spikes = tf.zeros_like(z)
         new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, thr))
         new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
                                  0., float(self.n_refractory))

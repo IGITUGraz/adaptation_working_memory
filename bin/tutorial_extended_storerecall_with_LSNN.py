@@ -109,6 +109,9 @@ tf.app.flags.DEFINE_bool('analog_in', False, 'feed analog input to the network')
 tf.app.flags.DEFINE_bool('no_recall_distr', True, 'do not show any input values during recall command')
 tf.app.flags.DEFINE_bool('hamm_among_each_word', True, 'enforce hamming dist also among each test string')
 tf.app.flags.DEFINE_bool('FastALIF', True, 'use simpler ALIF model without synaptic delay')
+tf.app.flags.DEFINE_bool('eprop', False, 'enable symmetric eprop in FastALIF model')
+
+assert FLAGS.FastALIF or not FLAGS.eprop, "eprop implemented only with FastALIF model"
 
 assert FLAGS.n_charac % 2 == 0, "Please have even number of bits in value word"
 
@@ -235,7 +238,8 @@ if FLAGS.model == 'lsnn':
              n_refractory=FLAGS.n_ref, dt=dt, tau_adaptation=tau_a_spread, beta=beta, thr=FLAGS.thr,
              rewiring_connectivity=FLAGS.rewiring_connectivity,
              in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-             dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
+             dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min,
+             stop_z_gradients=FLAGS.eprop
              )
 elif FLAGS.model == 'stp':
     cell = STP(
