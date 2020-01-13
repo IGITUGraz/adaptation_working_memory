@@ -28,7 +28,7 @@ from tutorial_storerecall_utils import generate_storerecall_data, error_rate, ge
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
-    feed_dict_with_placeholder_container, exp_convolve, ALIF, STP
+    feed_dict_with_placeholder_container, exp_convolve, ALIF, STP, SynSTP
 from lsnn.guillaume_toolbox.rewiring_tools import weight_sampler, rewiring_optimizer_wrapper
 
 script_name = os.path.basename(__file__)[:-3]
@@ -81,6 +81,8 @@ tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons 
 tf.app.flags.DEFINE_float('U', .2, 'STP baseline value of u')
 tf.app.flags.DEFINE_float('tauF', 100, 'STP tau facilitation')
 tf.app.flags.DEFINE_float('tauD', 1200, 'STP tau depression')
+tf.app.flags.DEFINE_float('tauF_err', 10, 'STP tau facilitation range')
+tf.app.flags.DEFINE_float('tauD_err', 10, 'STP tau depression range')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Uniform spread of adaptation time constants')
 tf.app.flags.DEFINE_bool('tau_a_power', False, 'Power law spread of adaptation time constants')
@@ -94,6 +96,7 @@ tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
 tf.app.flags.DEFINE_bool('preserve_state', True, 'preserve network state between training trials')
+tf.app.flags.DEFINE_bool('synstp', False, 'synapse level simulation of STP (distribution of time constants and states)')
 
 if FLAGS.batch_val is None:
     FLAGS.batch_val = FLAGS.batch_train
@@ -193,6 +196,23 @@ if FLAGS.reproduce == '560_STP_D':
     FLAGS.n_iter = 400
     FLAGS.tauF = 20
     FLAGS.tauD = 700
+
+if FLAGS.reproduce == '560_STP_D_syn':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 17
+    FLAGS.tauF_err = 5
+    FLAGS.tauD = 671
+    FLAGS.tauD_err = 17
+    FLAGS.synstp = True
+
 
 if FLAGS.reproduce == '560_STP_F_scaleAll':
     print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
@@ -330,14 +350,25 @@ if FLAGS.model == 'lsnn':
                 dampening_factor=FLAGS.dampening_factor, thr_min=FLAGS.thr_min
                 )
 else:
-    cell = STP(
-        n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
-        n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
-        rewiring_connectivity=FLAGS.rewiring_connectivity,
-        in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
-        dampening_factor=FLAGS.dampening_factor,
-        tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
-    )
+    if FLAGS.synstp:
+        cell = SynSTP(
+            n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
+            n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
+            rewiring_connectivity=FLAGS.rewiring_connectivity,
+            in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+            dampening_factor=FLAGS.dampening_factor,
+            U=FLAGS.U,
+            tau_D=FLAGS.tauD, tau_D_err=FLAGS.tauD, tau_F=FLAGS.tauF, tau_F_err=5.
+        )
+    else:
+        cell = STP(
+            n_in=FLAGS.n_in, n_rec=FLAGS.n_regular + FLAGS.n_adaptive, tau=tau_v,
+            n_refractory=FLAGS.n_ref, dt=dt, thr=FLAGS.thr,
+            rewiring_connectivity=FLAGS.rewiring_connectivity,
+            in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
+            dampening_factor=FLAGS.dampening_factor,
+            tau_F=FLAGS.tauF, tau_D=FLAGS.tauD, U=FLAGS.U,
+        )
 
 cell_name = type(cell).__name__
 print('\n -------------- \n' + cell_name + '\n -------------- \n')
