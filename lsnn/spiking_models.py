@@ -829,7 +829,7 @@ class SynSTP(Cell):
 
     @property
     def output_size(self):
-        return [self.n_rec, (self.n_rec, self.n_rec), (self.n_rec, self.n_rec)]
+        return self.n_rec
 
     @property
     def state_size(self):
@@ -903,12 +903,6 @@ class SynSTP(Cell):
                                  0., float(self.n_refractory))
         new_c = state.c + (tf.ones_like(new_z) - new_z) - new_z * state.c
 
-        print(new_v.get_shape())
-        print(new_z.get_shape())
-        print(new_r.get_shape())
-        print(new_c.get_shape())
-        print(new_u.get_shape())
-        print(new_x.get_shape())
         new_state = STPStateTuple(
             v=new_v,
             z=new_z,
@@ -917,4 +911,4 @@ class SynSTP(Cell):
             u=new_u,
             x=new_x,
         )
-        return [new_z, new_u, new_x], new_state
+        return new_z, new_state

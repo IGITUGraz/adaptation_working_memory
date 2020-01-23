@@ -211,8 +211,59 @@ if FLAGS.reproduce == '560_STP_D_syn':
     FLAGS.tauF_err = 5
     FLAGS.tauD = 671
     FLAGS.tauD_err = 17
+    FLAGS.U = 0.25
     FLAGS.synstp = True
 
+if FLAGS.reproduce == '560_STP_D_syn_scaleAll':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP D network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 51
+    FLAGS.tauF_err = 15
+    FLAGS.tauD = 2000
+    FLAGS.tauD_err = 51
+    FLAGS.U = 0.25
+    FLAGS.synstp = True
+
+if FLAGS.reproduce == '560_STP_F_syn':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 507
+    FLAGS.tauF_err = 37
+    FLAGS.tauD = 194
+    FLAGS.tauD_err = 18
+    FLAGS.U = 0.28
+    FLAGS.synstp = True
+
+if FLAGS.reproduce == '560_STP_F_syn_scaleAll':
+    print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
+    FLAGS.model = 'stp'
+    FLAGS.thr = 0.01
+    FLAGS.n_regular = 0
+    FLAGS.n_adaptive = 60
+    FLAGS.seq_len = 20
+    FLAGS.seq_delay = 10
+    FLAGS.n_in = 40
+    FLAGS.n_iter = 400
+    FLAGS.tauF = 2000
+    FLAGS.tauF_err = 146
+    FLAGS.tauD = 765
+    FLAGS.tauD_err = 71
+    FLAGS.U = 0.28
+    FLAGS.synstp = True
 
 if FLAGS.reproduce == '560_STP_F_scaleAll':
     print("Using the hyperparameters as in 560 paper: LSNN - STP F network")
@@ -414,12 +465,14 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len, batch=None, override_input=
 
     return data_dict
 
+
 # Define the name of spike train for the different models
 z_stack, final_state = tf.nn.dynamic_rnn(cell, input_spikes, initial_state=init_state_holder, dtype=tf.float32)
 if FLAGS.model == 'lsnn':
     z, b_con = z_stack
 else:
-    z, stp_u, stp_x = z_stack
+    # z, stp_u, stp_x = z_stack
+    z = z_stack
 z_con = []
 z_all = z
 
@@ -562,9 +615,9 @@ plot_result_tensors = {
 }
 if FLAGS.model == 'lsnn':
     plot_result_tensors['b_con'] = b_con
-else:
-    plot_result_tensors['stp_u'] = stp_u
-    plot_result_tensors['stp_x'] = stp_x
+# else:
+#     plot_result_tensors['stp_u'] = stp_u
+#     plot_result_tensors['stp_x'] = stp_x
 
 t_train = 0
 t_ref = time()
