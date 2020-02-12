@@ -848,6 +848,8 @@ def plot_spikes(ax, spikes, linewidth=None, max_spike=None, color='black'):
 
 
 def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=False):
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
     import datetime
@@ -895,7 +897,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     # print("np.argsort(delays)[-4:]", np.argsort(delays)[-4:])
 
     start_time = datetime.datetime.now()
-    filename = os.path.join(data_path, 'figure_test' + str(long_delay_batch) + '_' + start_time.strftime("%H%M"))
+    filename = os.path.join(data_path, 'NEWfigure_test' + str(long_delay_batch) + '_' + start_time.strftime("%H%M"))
     pbar.update(1)
 
     plt.ion()
@@ -987,6 +989,10 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     pbar.update(1)
 
     # PLOT ALIF SPIKES
+    sub_data = plot_result_values['b_con'][batch]
+    vars = np.var(sub_data, axis=0)
+    cell_with_max_var = np.argsort(vars)[::-1]
+
     k_data = 1
     data = plot_result_values['z']
     d_name = 'ALIF'
@@ -1004,7 +1010,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         ax.get_yaxis().set_visible(False)
 
     data = data[batch]
-    data = data[:, FLAGS.n_regular::FLAGS.n_per_channel*10]
+    data = data[:, cell_with_max_var[::20]]
 
     # cell_select = np.linspace(start=0, stop=data.shape[1] - 1, dtype=int)
     # data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
@@ -1026,12 +1032,9 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         # ax.grid(color='black', alpha=0.15, linewidth=0.4)
         ax.set_ylabel('thresholds', fontsize=fs)
         ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-        sub_data = plot_result_values['b_con'][batch]
-        vars = np.var(sub_data, axis=0)
-        cell_with_max_var = np.argsort(vars)[::-1]
         presentation_steps = np.arange(sub_data.shape[0])
         # ax.plot(sub_data[:, cell_with_max_var[::10]], color='r', alpha=0.4, linewidth=1)
-        ax.plot(sub_data[:, cell_with_max_var[::15]], alpha=0.7, linewidth=1)
+        ax.plot(sub_data[:, cell_with_max_var[::20]], alpha=0.7, linewidth=1)
         ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
                  np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
         hide_bottom_axis(ax)
