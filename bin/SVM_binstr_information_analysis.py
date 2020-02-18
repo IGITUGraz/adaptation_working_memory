@@ -53,29 +53,36 @@ def decode_memory_with_SVC(dir_path, plot_filename):
         return ''.join(input_data.astype(int).astype(str))
 
     def get_data():
-        x_recall = []
-        y_recall = []
+        x_store = []
         x_delay = []
-        y_delay = []
+        x_recall = []
+        # y_store = []
+        y_recall = []
         store_idxs = np.nonzero(store)  # list of batch idxs, list of time idxs
         recall_idxs = np.nonzero(recall)  # list of batch idxs, list of time idxs
         for b, s, r in zip(store_idxs[0], store_idxs[1], recall_idxs[1]):
             x_recall.append(z_avg[b, r])
-            y_recall.append(to_label(norm_input[b, s]))
             x_delay.append(z_avg[b, r - 1])
-            y_delay.append(to_label(norm_input[b, s]))
-        return x_delay, y_delay, x_recall, y_recall
+            x_store.append(z_avg[b, s])
+            # y_store.append(to_label(norm_input[b, s]))
+            y_recall.append(to_label(norm_input[b, s]))
+        return x_store, x_delay, x_recall, y_recall#, y_store
 
-    x_delay_all, y_delay_all, x_recall_all, y_recall_all = get_data()
+    x_store_all, x_delay_all, x_recall_all, y_recall_all = get_data()
 
     results = {}
-    for x, y, dname in [(x_delay_all, y_delay_all, "DELAY"), (x_recall_all, y_recall_all, "RECALL")]:
+    for x, y, dname in [(x_store_all, y_recall_all, "STORE"),
+                        (x_delay_all, y_recall_all, "DELAY"),
+                        (x_recall_all, y_recall_all, "RECALL")]:
         parameters = {'kernel': ('linear', 'rbf', 'poly'), 'C': [0.1, 1, 10, 100, 1000]}
         svc = svm.SVC(gamma="auto")
         clf = GridSearchCV(svc, parameters, cv=5, refit=True, iid=True)
         clf.fit(x, y)
         print("MODEL trained during ", dname, "score:", clf.best_score_)
-        print("params:", clf.best_params_)
+        recall_score = clf.score(x_recall_all, y_recall_all)
+        store_score = clf.score(x_store_all, y_recall_all)
+        print("scored on recall data:", recall_score, "scored on store data:", store_score)
+        # print("params:", clf.best_params_)
         results[dname] = {'period': dname, 'accuracy': clf.best_score_, 'params': clf.best_params_}
     json.dump(results, open(os.path.join(dir_path, 'SVM_information_analysis.json'), 'w'),
               indent=4, sort_keys=True)
