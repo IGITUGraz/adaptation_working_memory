@@ -1,3 +1,7 @@
+"""
+Reproduce the 560 fig1 panel C with:
+PYTHONPATH=. python3 bin/560_fig1_ALIF_step_current_response.py --input_current=0.024
+"""
 # from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik, einsum_bi_ijk_to_bjk
 # import matplotlib
 # matplotlib.use('Agg')
@@ -71,7 +75,7 @@ tf.app.flags.DEFINE_float('V0', 1, 'unit scaling for LSNN model')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', .02, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('thr_min', .005, 'threshold at which the LSNN neurons spike')
-tf.app.flags.DEFINE_float('input_current', 0.021, 'input current to the adaptive neuron')
+tf.app.flags.DEFINE_float('input_current', 0.024, 'input current to the adaptive neuron')
 tf.app.flags.DEFINE_float('injected_noise_current', 0.0, 'input current to the adaptive neuron')
 ##
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
@@ -243,7 +247,7 @@ cell = ALIFv(
     rewiring_connectivity=FLAGS.rewiring_connectivity,
     in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
     dampening_factor=FLAGS.dampening_factor,
-    add_current=FLAGS.input_current, injected_noise_current=FLAGS.injected_noise_current
+    add_current=0., injected_noise_current=FLAGS.injected_noise_current
 )
 
 cell_name = type(cell).__name__
@@ -273,7 +277,7 @@ def get_data_dict(batch_size, seq_len=FLAGS.seq_len):
         step[-100:] = 0
         step = np.tile(np.expand_dims(step, axis=1), (batch_size, 1, 1))
 
-        spikes = step * FLAGS.input_current * 0.5
+        spikes = step * FLAGS.input_current
     else:
         spikes = np.zeros(seq_len)
         spikes[90:320] = 1/7
@@ -376,6 +380,14 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     It plots the data for a fixed sequence that should be representative of the expected computation
     :return:
     """
+
+    def get_adaptation_index(spike_train):
+        spike_times = np.where(spike_train)[0]
+        ISI = np.diff(spike_times)
+        diff_ISI = ISI[1:] - ISI[:-1]
+        add_ISI = ISI[1:] + ISI[:-1]
+        normed_diff_ISI = diff_ISI / add_ISI
+        return np.mean(normed_diff_ISI)
     ylabel_x = -0.1
     ylabel_y = 0.5
     fs = 10
@@ -405,7 +417,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     # ax.set_yticks([FLAGS.input_current])
     ax.set_xticks([])
     ax.axis([0, presentation_steps[-1],
-             0.02, 0.035])  # [xmin, xmax, ymin, ymax]
+             0.0, 0.03])  # [xmin, xmax, ymin, ymax]
              # np.min(sub_data[:, :]), np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
 
@@ -416,6 +428,7 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     data = plot_result_values['z']
     if np.size(data) > 0:
         data = data[batch]
+        print("AI =", get_adaptation_index(data[:, 0]))
         n_max = min(data.shape[1], n_max_neuron_per_raster)
         cell_select = np.linspace(start=0, stop=data.shape[1] - 1, num=n_max, dtype=int)
         data = data[:, cell_select]  # select a maximum of n_max_neuron_per_raster neurons to plot
@@ -432,38 +445,43 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     ax = ax_list[-1]
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     # ax.spines['bottom'].set_visible(False)
-    ax.set_ylabel('potential (V)', fontsize=fs)
+    ax.set_ylabel('V(t), A(t) mV', fontsize=fs)
     sub_data = plot_result_values['v'][batch]
     vars = np.var(sub_data, axis=0)
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
     presentation_steps = np.arange(sub_data.shape[0])
     # ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.6, linewidth=1)
-    ax.plot(sub_data[:, :], color='b', label='membrane potential', alpha=0.6, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]),
-             np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
+    ax.plot(sub_data[:, :], color='b', label='membrane potential V(t)', alpha=0.6, linewidth=1)
+    # ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]), np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
+    ax.axis([0, presentation_steps[-1], 0.0, 0.03])  # [xmin, xmax, ymin, ymax]
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    temp = ax.get_yticks()  # [0.   0.01 0.02 0.03]
+    temp = [str(int(t*1000)) for t in temp]
+    ax.set_yticklabels(temp)
 
     # ax.set_xticks([])
 
     # debug plot for psp-s or biases
-    plot_param = 'b_con'  # or 'psp'
     # ax.set_xticklabels([])
     # ax = ax_list[-1]
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     # ax.set_ylabel('PSPs' if plot_param == 'psp' else 'threshold', fontsize=fs)
-    sub_data = plot_result_values[plot_param][batch]
+    sub_data = plot_result_values['b_con'][batch]
     # if plot_param == 'b_con':
     #     sub_data = sub_data * FLAGS.V0 * beta + thr
-    vars = np.var(sub_data, axis=0)
+    # vars = np.var(sub_data, axis=0)
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-    presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, :], color='r', label='threshold', alpha=0.4, linewidth=1)
-    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]),
-             np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
+    # presentation_steps = np.arange(sub_data.shape[0])
+    ax.plot(sub_data[:, :], color='r', label='threshold A(t)', alpha=0.4, linewidth=1)
+    # ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]), np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     ax.legend()
-    ax.set_xlabel('time in ms')
+    temp = ax.get_xticks()  # [0.   0.01 0.02 0.03]
+    temp_s = ["{:.1f}".format(t/1000) for t in temp]
+    ax.set_xticks([temp[0], temp[-1]])
+    ax.set_xticklabels([temp_s[0], temp_s[-1]])
+    ax.set_xlabel('time (s)')
     # To plot with interactive python one need to wait one second to the time to draw the axis
     if FLAGS.do_plot:
         plt.tight_layout()
