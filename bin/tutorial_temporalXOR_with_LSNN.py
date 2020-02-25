@@ -32,18 +32,18 @@ start_time = datetime.datetime.now()
 tf.app.flags.DEFINE_string('comment', '', 'comment to retrieve the stored results')
 tf.app.flags.DEFINE_string('checkpoint', '', 'path to pre-trained model to restore')
 ##
-tf.app.flags.DEFINE_integer('batch_train', 128, 'batch size fo the validation set')
-tf.app.flags.DEFINE_integer('batch_val', 128, 'batch size of the validation set')
-tf.app.flags.DEFINE_integer('batch_test', 128, 'batch size of the testing set')
+tf.app.flags.DEFINE_integer('batch_train', 256, 'batch size fo the validation set')
+tf.app.flags.DEFINE_integer('batch_val', None, 'batch size of the validation set')
+tf.app.flags.DEFINE_integer('batch_test', None, 'batch size of the testing set')
 tf.app.flags.DEFINE_integer('n_charac', 3, 'number of characters in the recall task')
 tf.app.flags.DEFINE_integer('n_in', 2, 'number of input units.')
-tf.app.flags.DEFINE_integer('n_regular', 40, 'number of recurrent units.')
-tf.app.flags.DEFINE_integer('n_adaptive', 40, 'number of controller units')
+tf.app.flags.DEFINE_integer('n_regular', 0, 'number of recurrent units.')
+tf.app.flags.DEFINE_integer('n_adaptive', 80, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 2000, 'number of iterations')
-tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
+tf.app.flags.DEFINE_integer('n_iter', 4000, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 1, 'Expected delay in character steps. Must be <= seq_len - 2')
@@ -53,13 +53,13 @@ tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 100, 'Decay every')
 tf.app.flags.DEFINE_integer('xor_delay', 100, 'Expected delay in character steps. Must be <= seq_len - 2')
 ##
-tf.app.flags.DEFINE_float('stop_crit', 0.05, 'Stopping criterion. Stops training if error goes below this value')
-tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
-tf.app.flags.DEFINE_float('tau_a', 200, 'Mikolov model alpha - threshold decay')
+tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
+tf.app.flags.DEFINE_float('beta', 2., 'Mikolov adaptive threshold beta scaling parameter')
+tf.app.flags.DEFINE_float('tau_a', 500, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
 tf.app.flags.DEFINE_float('learning_rate', 0.02, 'Base learning rate.')
 tf.app.flags.DEFINE_float('lr_decay', 0.7, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 1e-1, 'regularization coefficient')
+tf.app.flags.DEFINE_float('reg', 1, 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring')
@@ -72,12 +72,18 @@ tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('save_data', True, 'Save the data (training, test, network, trajectory for plotting)')
 tf.app.flags.DEFINE_bool('do_plot', True, 'Perform plots')
-tf.app.flags.DEFINE_bool('monitor_plot', False, 'Perform plots during training')
+tf.app.flags.DEFINE_bool('monitor_plot', True, 'Perform plots during training')
 tf.app.flags.DEFINE_bool('interactive_plot', False, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
 tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
+tf.app.flags.DEFINE_bool('ramping_learning_rate', True, '')
+
+if FLAGS.batch_val is None:
+    FLAGS.batch_val = FLAGS.batch_train
+if FLAGS.batch_test is None:
+    FLAGS.batch_test = FLAGS.batch_train
 
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
@@ -147,6 +153,12 @@ file_reference = '{}_{}_seqlen{}_seqdelay{}_in{}_R{}_A{}_lr{}_tauchar{}_comment{
     FLAGS.learning_rate, FLAGS.tau_char, FLAGS.comment)
 file_reference = file_reference + '_taua' + str(FLAGS.tau_a) + '_beta' + str(FLAGS.beta)
 print('FILE REFERENCE: ' + file_reference)
+
+# Saving setup
+full_path = os.path.join(result_folder, file_reference)
+if not os.path.exists(full_path):
+    os.makedirs(full_path)
+
 # Save parameters and training log
 try:
     flag_dict = FLAGS.flag_values_dict()
@@ -280,7 +292,7 @@ last_final_state_state_testing_pointer = [sess.run(cell.zero_state(batch_size=FL
 if FLAGS.do_plot and FLAGS.interactive_plot:
     plt.ion()
 if FLAGS.do_plot:
-    fig, ax_list = plt.subplots(5, figsize=(5.9, 6))
+    fig, ax_list = plt.subplots(5, figsize=(5.9, 6), gridspec_kw={'height_ratios': [1, 1, 2, 2, 1]})
 
     # re-name the window with the name of the cluster to track relate to the terminal window
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
@@ -317,9 +329,19 @@ plot_result_tensors = {'input_spikes': input_spikes,
                        'target_nums': target_nums,
                        # 'out_avg_per_step': out_plot_char_step,
                        }
+
+ramping_iterations = FLAGS.lr_decay_every
+ramping_learning_rate_values = tf.linspace(0.001, 1., num=ramping_iterations)
+clipped_global_step = tf.minimum(global_step, ramping_iterations - 1)
+ramping_learning_rate_op = tf.assign(learning_rate,
+                                     FLAGS.learning_rate * ramping_learning_rate_values[clipped_global_step])
+
 t_train = 0
 t_ref = time()
 for k_iter in range(FLAGS.n_iter):
+
+    if k_iter < ramping_iterations and FLAGS.ramping_learning_rate:
+        new_lr = sess.run(ramping_learning_rate_op)
 
     if k_iter > 0 and np.mod(k_iter, FLAGS.lr_decay_every) == 0:
         old_lr = sess.run(learning_rate)
@@ -430,8 +452,8 @@ for k_iter in range(FLAGS.n_iter):
 
         if FLAGS.do_plot and FLAGS.monitor_plot:
             update_plot(plt, ax_list, FLAGS, plot_results_values)
-            tmp_path = os.path.join(result_folder,
-                                    'tmp/figure' + start_time.strftime("%H%M") + '_' +
+            tmp_path = os.path.join(full_path,
+                                    'train_figure' + start_time.strftime("%H%M") + '_' +
                                     str(k_iter) + '.pdf')
             if not os.path.exists(os.path.join(result_folder, 'tmp')):
                 os.makedirs(os.path.join(result_folder, 'tmp'))
@@ -455,11 +477,6 @@ print('FINISHED IN {:.2g} s'.format(time() - t_ref))
 
 # Save everything
 if FLAGS.save_data:
-
-    # Saving setup
-    full_path = os.path.join(result_folder, file_reference)
-    if not os.path.exists(full_path):
-        os.makedirs(full_path)
 
     # Save the tensorflow graph
     saver.save(sess, os.path.join(full_path, 'model'))
@@ -492,7 +509,7 @@ if FLAGS.save_data:
             feed_dict=test_dict)
         # last_final_state_state_testing_pointer[0] = results_values['final_state']
         test_errors.append(results_values['recall_errors'])
-        if FLAGS.do_plot and FLAGS.monitor_plot:
+        if FLAGS.do_plot:
             update_plot(plt, ax_list, FLAGS, plot_results_values)
             tmp_path = os.path.join(full_path,
                                     'figure_test' + start_time.strftime("%H%M") + '_' +

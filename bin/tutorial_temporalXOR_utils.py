@@ -1,6 +1,8 @@
 import numpy as np
 import numpy.random as rd
 from scipy.stats import norm
+
+from bin.tutorial_extended_storerecall_utils import plot_spikes
 from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot, hide_bottom_axis
 
 
@@ -189,6 +191,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     ylabel_y = 0.5
     fs = 10
     plt.rcParams.update({'font.size': fs})
+    end_time =plot_result_values['input_spikes'].shape[1]
 
     # Clear the axis to print new plots
     for k in range(ax_list.shape[0]):
@@ -201,10 +204,11 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     data = plot_result_values['input_spikes']
     data = data[batch, :end_time]
     presentation_steps = np.arange(data.shape[0])
-    ax.plot(presentation_steps, data[:, 0], color='black', alpha=0.7)
+    ax.plot(presentation_steps, data[:, 0], color='tab:blue', alpha=0.7)
     ax.axis([0, len(data), -1.1, 1.1])
-    ax.set_ylabel('input', fontsize=fs)
+    ax.set_ylabel('Input', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    ax.set_yticks([-1, 1])
     hide_bottom_axis(ax)
 
     # PLOT Go-cue
@@ -212,24 +216,27 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     data = plot_result_values['input_spikes']
     data = data[batch, :end_time]
     presentation_steps = np.arange(data.shape[0])
-    ax.plot(presentation_steps, data[:, 1], color='black', alpha=0.7)
+    ax.plot(presentation_steps, data[:, 1], color='tab:red', alpha=0.7)
     ax.axis([0, len(data), -1.1, 1.1])
-    ax.set_ylabel('go-cue', fontsize=fs)
+    ax.set_ylabel('Go-cue', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    ax.set_yticks([-1, 1])
     hide_bottom_axis(ax)
 
     # PLOT SPIKES
     ax = ax_list[2]
     data = plot_result_values['z']
-    data = data[batch, :end_time, :FLAGS.n_regular]
-    raster_plot(ax, data, linewidth=1.)
-    ax.set_ylabel('R', fontsize=fs)
+    data = data[batch, :end_time,]
+    # raster_plot(ax, data, linewidth=1.)
+    plot_spikes(ax, data.T, linewidth=0.15, max_spike=20000)
+    ax.set_ylabel('LSNN', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     hide_bottom_axis(ax)
     ax = ax_list[3]
     data = plot_result_values['z']
     data = data[batch, :end_time, FLAGS.n_regular:FLAGS.n_regular+FLAGS.n_adaptive]
-    raster_plot(ax, data, linewidth=1.)
+    # raster_plot(ax, data, linewidth=1.)
+    plot_spikes(ax, data.T, linewidth=0.15, max_spike=20000)
     ax.set_ylabel('A', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     hide_bottom_axis(ax)
@@ -239,7 +246,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     ax.set_xticklabels([])
     ax = ax_list[-2]
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    ax.set_ylabel('thresholds', fontsize=fs)
+    ax.set_ylabel('Thresholds', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     sub_data = plot_result_values['b_con'][batch, :end_time]
     sub_data = sub_data + FLAGS.thr
@@ -260,17 +267,17 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     # processed target
     data = plot_result_values['target_nums'][batch, :end_time].astype(float)
     data[data == 2] = 0.5
-    line_target, = ax.plot(presentation_steps[:], data[:], color='green', label='target', alpha=0.7)
+    line_target, = ax.plot(presentation_steps[:], data[:], color='black', label='target', alpha=0.7)
     # processed output
     output0 = 1. - raw_out[:, 0]
     output1 = raw_out[:, 1]
     combined_output = (output0 + output1)/2
     presentation_steps = np.arange(combined_output.shape[0])
-    line_output2, = ax.plot(presentation_steps, combined_output, color='purple', label='output', alpha=0.7)
+    line_output2, = ax.plot(presentation_steps, combined_output, color='tab:green', label='output', alpha=0.7)
     line_handles = [line_output2, line_target]
 
-    ax.set_yticks([0, 0.5, 1])
-    ax.set_ylabel('output Y', fontsize=fs)
+    ax.set_yticks([0, 1])
+    ax.set_ylabel('Output', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     ax.axis([0, presentation_steps[-1] + 1, -0.3, 1.1])
     ax.legend(handles=line_handles, loc='lower left', fontsize=7, ncol=len(line_handles))
