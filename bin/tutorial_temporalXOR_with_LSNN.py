@@ -16,7 +16,6 @@ import numpy.random as rd
 import tensorflow as tf
 from lsnn.guillaume_toolbox.file_saver_dumper_no_h5py import save_file
 from lsnn.guillaume_toolbox.matplotlib_extension import strip_right_top_axis, raster_plot
-from tutorial_storerecall_utils import generate_storerecall_data, error_rate, gen_custom_delay_batch
 
 from lsnn.guillaume_toolbox.tensorflow_utils import tf_downsample
 from lsnn.spiking_models import tf_cell_to_savable_dict, placeholder_container_for_rnn_state,\
@@ -42,7 +41,7 @@ tf.app.flags.DEFINE_integer('n_adaptive', 80, 'number of controller units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization')
-tf.app.flags.DEFINE_integer('n_iter', 4000, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 2000, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 1, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
 tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
@@ -51,15 +50,16 @@ tf.app.flags.DEFINE_integer('tau_char', 50, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 200, 'Decay every')
 tf.app.flags.DEFINE_integer('print_every', 100, 'Decay every')
-tf.app.flags.DEFINE_integer('xor_delay', 100, 'Expected delay in character steps. Must be <= seq_len - 2')
+tf.app.flags.DEFINE_integer('xor_delay', 170, 'Delay between pulses')
+tf.app.flags.DEFINE_integer('pulse_duration', 50, 'Input and cuse pulse duration')
 ##
 tf.app.flags.DEFINE_float('stop_crit', 0.01, 'Stopping criterion. Stops training if error goes below this value')
-tf.app.flags.DEFINE_float('beta', 2., 'Mikolov adaptive threshold beta scaling parameter')
+tf.app.flags.DEFINE_float('beta', 1., 'Mikolov adaptive threshold beta scaling parameter')
 tf.app.flags.DEFINE_float('tau_a', 500, 'Mikolov model alpha - threshold decay')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in LSNN and output neurons')
-tf.app.flags.DEFINE_float('learning_rate', 0.02, 'Base learning rate.')
-tf.app.flags.DEFINE_float('lr_decay', 0.7, 'Decaying factor')
-tf.app.flags.DEFINE_float('reg', 1, 'regularization coefficient')
+tf.app.flags.DEFINE_float('learning_rate', 0.01, 'Base learning rate.')
+tf.app.flags.DEFINE_float('lr_decay', 0.8, 'Decaying factor')
+tf.app.flags.DEFINE_float('reg', 50., 'regularization coefficient')
 tf.app.flags.DEFINE_float('rewiring_connectivity', -1, 'possible usage of rewiring with ALIF and LIF (0.1 is default)')
 tf.app.flags.DEFINE_float('readout_rewiring_connectivity', -1, '')
 tf.app.flags.DEFINE_float('l1', 1e-2, 'l1 regularization that goes with rewiring')
@@ -79,14 +79,15 @@ tf.app.flags.DEFINE_bool('verbose', True, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
 tf.app.flags.DEFINE_bool('ramping_learning_rate', True, '')
+tf.app.flags.DEFINE_bool('entropy_loss', False, '')
+tf.app.flags.DEFINE_bool('sigmoid_loss', False, '')
 
+if FLAGS.sigmoid_loss:
+    FLAGS.n_charac = 2
 if FLAGS.batch_val is None:
     FLAGS.batch_val = FLAGS.batch_train
 if FLAGS.batch_test is None:
     FLAGS.batch_test = FLAGS.batch_train
-
-# Run asserts to check seq_delay and seq_len relation is ok
-_ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
 
 # Fix the random seed if given as an argument
 if FLAGS.seed >= 0:
@@ -186,7 +187,14 @@ recall_charac_mask = recall_mask
 def get_data_dict(batch_size, pulse_delay=FLAGS.xor_delay):
     input_data, target_data, target_mask, targets = generate_xor_input(batch_size=batch_size,
                                                                        length=FLAGS.seq_len * FLAGS.tau_char,
-                                                                       expected_delay=pulse_delay)
+                                                                       expected_delay=pulse_delay,
+                                                                       pulse_duration=FLAGS.pulse_duration)
+    # for t, m in zip(target_data[:10], target_mask[:10]):
+    #     print(t[::20])
+    #     print(m[::20])
+    if FLAGS.sigmoid_loss:
+        target_data[target_data == 2] = 0.5
+        targets[targets == 2] = 0.5
     data_dict = {input_spikes: input_data, target_nums: target_data, recall_mask: target_mask,
                  target_sequence: targets, batch_size_holder: batch_size}
 
@@ -199,8 +207,8 @@ z_con = []
 z_all = z
 
 with tf.name_scope('RecallLoss'):
+    epsilon = tf.constant(1e-8, name="epsilon")
     target_nums_at_recall = tf.boolean_mask(target_nums, recall_charac_mask)
-    Y = tf.one_hot(target_nums_at_recall, depth=n_output_symbols, name='Target')
 
     # MTP models do not use controller (modulator) population for output
     out_neurons = z_all
@@ -216,9 +224,13 @@ with tf.name_scope('RecallLoss'):
 
     out = einsum_bij_jk_to_bik(psp, w_out)
     Y_predict = tf.boolean_mask(out, recall_charac_mask, name='Prediction')
-
-    loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target_nums,
-                                                                                logits=out))
+    if FLAGS.sigmoid_loss:
+        Y_predict_sigm = tf.sigmoid(Y_predict)
+        Y_sig = tf.cast(target_nums_at_recall, tf.float32)
+        loss_recall = Y_sig * -tf.log(Y_predict_sigm + epsilon) + (1 - Y_sig) * -tf.log(1 - (Y_predict_sigm + epsilon))
+    else:
+        loss_recall = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=target_nums_at_recall, logits=Y_predict))
 
     with tf.name_scope('PlotNodes'):
         out_plot = tf.nn.softmax(out)
@@ -259,6 +271,11 @@ with tf.name_scope('OptimizationScheme'):
     decay_learning_rate_op = tf.assign(learning_rate, learning_rate * FLAGS.lr_decay)
 
     loss = loss_reg + loss_recall
+
+    if FLAGS.entropy_loss:
+        Y_predict_sigm = tf.sigmoid(out)
+        loss_entropy = tf.reduce_mean(Y_predict_sigm * tf.log(Y_predict_sigm + epsilon))
+        loss = loss + 0.1 * loss_entropy
 
     opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
@@ -363,8 +380,8 @@ for k_iter in range(FLAGS.n_iter):
     plot_result_tensors['b_con'] = b_con
 
     results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=val_dict)
-    last_final_state_state_validation_pointer[0] = results_values['final_state']
-    last_final_state_state_testing_pointer[0] = results_values['final_state']
+    # last_final_state_state_validation_pointer[0] = results_values['final_state']
+    # last_final_state_state_testing_pointer[0] = results_values['final_state']
     t_run = time() - t0
 
     # Storage of the results
@@ -470,7 +487,7 @@ for k_iter in range(FLAGS.n_iter):
     final_state_value, _, _, train_err = sess.run([final_state, train_step, update_regularization_coeff, recall_errors],
                                                   feed_dict=train_dict)
 
-    last_final_state_state_training_pointer[0] = final_state_value
+    # last_final_state_state_training_pointer[0] = final_state_value
     t_train = time() - t0
 
 print('FINISHED IN {:.2g} s'.format(time() - t_ref))

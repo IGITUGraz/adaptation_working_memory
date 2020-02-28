@@ -45,7 +45,7 @@ def generate_xor_input(batch_size, length, expected_delay=100, pulse_duration=30
         input_nums[b, :] = seq
 
         gocue_seq = np.zeros(length)
-        end_pulses = np.nonzero(seq)[0][-1]
+        end_pulses = np.nonzero(seq)[0][-1]  # FIXME: null target moves cue earlier
         gocue_seq[end_pulses+pulse_delay:end_pulses+pulse_delay+pulse_duration] += pulse_trace()
         gocue_nums[b, :] = gocue_seq
 
@@ -193,7 +193,12 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     plt.rcParams.update({'font.size': fs})
     end_time =plot_result_values['input_spikes'].shape[1]
 
-    # Clear the axis to print new plots
+    sub_data = plot_result_values['b_con'][batch, :end_time]
+    vars = np.var(sub_data, axis=0)
+    cell_with_max_var = np.argsort(vars)[::-1]
+    cell_with_max_var = cell_with_max_var[::4]  # half the neurons
+
+    # Clear the axis to draw new plots
     for k in range(ax_list.shape[0]):
         ax = ax_list[k]
         ax.clear()
@@ -224,20 +229,20 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     hide_bottom_axis(ax)
 
     # PLOT SPIKES
+    # ax = ax_list[2]
+    # data = plot_result_values['z']
+    # data = data[batch, :end_time,]
+    # # raster_plot(ax, data, linewidth=1.)
+    # plot_spikes(ax, data.T, linewidth=0.15, max_spike=20000)
+    # ax.set_ylabel('LSNN', fontsize=fs)
+    # ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
+    # hide_bottom_axis(ax)
     ax = ax_list[2]
     data = plot_result_values['z']
-    data = data[batch, :end_time,]
+    data = data[batch, :end_time, cell_with_max_var]
     # raster_plot(ax, data, linewidth=1.)
-    plot_spikes(ax, data.T, linewidth=0.15, max_spike=20000)
-    ax.set_ylabel('LSNN', fontsize=fs)
-    ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    hide_bottom_axis(ax)
-    ax = ax_list[3]
-    data = plot_result_values['z']
-    data = data[batch, :end_time, FLAGS.n_regular:FLAGS.n_regular+FLAGS.n_adaptive]
-    # raster_plot(ax, data, linewidth=1.)
-    plot_spikes(ax, data.T, linewidth=0.15, max_spike=20000)
-    ax.set_ylabel('A', fontsize=fs)
+    plot_spikes(ax, data, linewidth=0.15, max_spike=20000)
+    ax.set_ylabel('ALIF', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     hide_bottom_axis(ax)
 
@@ -249,10 +254,7 @@ def update_plot(plt, ax_list, FLAGS, plot_result_values, batch=0, end_time=600):
     ax.set_ylabel('Thresholds', fontsize=fs)
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
     sub_data = plot_result_values['b_con'][batch, :end_time]
-    sub_data = sub_data + FLAGS.thr
-    vars = np.var(sub_data, axis=0)
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-    cell_with_max_var = np.argsort(vars)[::-1]
     presentation_steps = np.arange(sub_data.shape[0])
     ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
     ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
