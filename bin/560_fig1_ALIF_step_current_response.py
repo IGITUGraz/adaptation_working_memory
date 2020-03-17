@@ -90,6 +90,7 @@ tf.app.flags.DEFINE_bool('verbose', False, '')
 tf.app.flags.DEFINE_bool('neuron_sign', True, '')
 tf.app.flags.DEFINE_bool('adaptive_reg', False, '')
 tf.app.flags.DEFINE_bool('step', True, 'Modulate the input current with a sine wave')
+tf.app.flags.DEFINE_bool('bio_interpret', False, 'Plotting: subtract adaptive thr component from memb. potential')
 FLAGS.thr = FLAGS.thr * FLAGS.V0  # scaling the threshold too!
 
 # A --n_regular=0 --n_adaptive=1 --input_current=0.05 --injected_noise_current=0.3
@@ -445,13 +446,18 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     ax = ax_list[-1]
     # ax.grid(color='black', alpha=0.15, linewidth=0.4)
     # ax.spines['bottom'].set_visible(False)
-    ax.set_ylabel('V(t), A(t) mV', fontsize=fs)
     sub_data = plot_result_values['v'][batch]
     vars = np.var(sub_data, axis=0)
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
     # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
     presentation_steps = np.arange(sub_data.shape[0])
     # ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.6, linewidth=1)
+    if FLAGS.bio_interpret:
+        ax.set_ylabel('V(t) mV', fontsize=fs)
+        adaptive_thr_data = plot_result_values['b_con'][batch] - FLAGS.thr
+        sub_data = sub_data - adaptive_thr_data
+    else:
+        ax.set_ylabel('V(t), A(t) mV', fontsize=fs)
     ax.plot(sub_data[:, :], color='b', label='membrane potential V(t)', alpha=0.6, linewidth=1)
     # ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]), np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
     ax.axis([0, presentation_steps[-1], 0.0, 0.03])  # [xmin, xmax, ymin, ymax]
@@ -461,22 +467,22 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     ax.set_yticklabels(temp)
 
     # ax.set_xticks([])
-
-    # debug plot for psp-s or biases
-    # ax.set_xticklabels([])
-    # ax = ax_list[-1]
-    # ax.grid(color='black', alpha=0.15, linewidth=0.4)
-    # ax.set_ylabel('PSPs' if plot_param == 'psp' else 'threshold', fontsize=fs)
-    sub_data = plot_result_values['b_con'][batch]
-    # if plot_param == 'b_con':
-    #     sub_data = sub_data * FLAGS.V0 * beta + thr
-    # vars = np.var(sub_data, axis=0)
-    # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-    # presentation_steps = np.arange(sub_data.shape[0])
-    ax.plot(sub_data[:, :], color='r', label='threshold A(t)', alpha=0.4, linewidth=1)
-    # ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]), np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
+    if not FLAGS.bio_interpret:
+        # debug plot for psp-s or biases
+        # ax.set_xticklabels([])
+        # ax = ax_list[-1]
+        # ax.grid(color='black', alpha=0.15, linewidth=0.4)
+        # ax.set_ylabel('PSPs' if plot_param == 'psp' else 'threshold', fontsize=fs)
+        sub_data = plot_result_values['b_con'][batch]
+        # if plot_param == 'b_con':
+        #     sub_data = sub_data * FLAGS.V0 * beta + thr
+        # vars = np.var(sub_data, axis=0)
+        # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
+        # presentation_steps = np.arange(sub_data.shape[0])
+        ax.plot(sub_data[:, :], color='r', label='threshold A(t)', alpha=0.4, linewidth=1)
+        # ax.axis([0, presentation_steps[-1], np.min(sub_data[:, :]), np.max(sub_data[:, :])])  # [xmin, xmax, ymin, ymax]
+        ax.legend()
     ax.get_yaxis().set_label_coords(ylabel_x, ylabel_y)
-    ax.legend()
     temp = ax.get_xticks()  # [0.   0.01 0.02 0.03]
     temp_s = ["{:.1f}".format(t/1000) for t in temp]
     ax.set_xticks([temp[0], temp[-1]])
