@@ -1,6 +1,8 @@
 """
-Reproduce the 560 fig1 panel C with:
-PYTHONPATH=. python3 bin/560_fig1_ALIF_step_current_response.py --input_current=0.024
+Reproduce the 560 fig1 panel B with:
+PYTHONPATH=. python3 bin/560_fig1_ALIF_step_current_response.py --beta=1.
+PYTHONPATH=. python3 bin/560_fig1_ALIF_step_current_response.py --beta=0.5
+PYTHONPATH=. python3 bin/560_fig1_ALIF_step_current_response.py --beta=1. --tau_a=300 --input_current=0.022
 """
 # from lsnn.guillaume_toolbox.tensorflow_einsums.einsum_re_written import einsum_bij_jk_to_bik, einsum_bi_ijk_to_bjk
 # import matplotlib
