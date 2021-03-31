@@ -43,8 +43,8 @@ tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization
 tf.app.flags.DEFINE_integer('n_iter', 3, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('seq_len', 12, 'Number of character steps')
-tf.app.flags.DEFINE_integer('seq_delay', 6, 'Expected delay in character steps. Must be <= seq_len - 2')
+tf.app.flags.DEFINE_integer('seq_len', 8, 'Number of character steps')
+tf.app.flags.DEFINE_integer('seq_delay', 3, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 200, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('lr_decay_every', 100, 'Decay every')
@@ -84,84 +84,6 @@ tf.app.flags.DEFINE_bool('preserve_state', True, '')
 FLAGS.thr = FLAGS.thr * FLAGS.V0  # scaling the threshold too!
 
 
-class LIF_delay(LIF):
-    def __init__(self, n_in, n_rec, tau=20., thr=0.03,
-                 dt=1., n_refractory=0, dtype=tf.float32, n_delay=1, rewiring_connectivity=-1,
-                 in_neuron_sign=None, rec_neuron_sign=None,
-                 dampening_factor=0.3,
-                 injected_noise_current=0.,
-                 V0=1., trainable=True):
-        """
-        Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
-
-        :param n_in: number of input neurons
-        :param n_rec: number of recurrent neurons
-        :param tau: membrane time constant
-        :param thr: threshold voltage
-        :param dt: time step of the simulation
-        :param n_refractory: number of refractory time steps
-        :param dtype: data type of the cell tensors
-        :param n_delay: number of synaptic delay, the delay range goes from 1 to n_delay time steps
-        :param reset: method of resetting membrane potential after spike thr-> by fixed threshold amount, zero-> to zero
-        """
-
-        if np.isscalar(tau): tau = tf.ones(n_rec, dtype=dtype) * np.mean(tau)
-        if np.isscalar(thr): thr = tf.ones(n_rec, dtype=dtype) * np.mean(thr)
-        tau = tf.cast(tau,dtype=dtype)
-        dt = tf.cast(dt,dtype=dtype)
-
-        self.dampening_factor = dampening_factor
-
-        # Parameters
-        self.n_delay = n_delay
-        self.n_refractory = n_refractory
-
-        self.dt = dt
-        self.n_in = n_in
-        self.n_rec = n_rec
-        self.data_type = dtype
-
-        self._num_units = self.n_rec
-
-        self.tau = tau
-        self._decay = tf.exp(-dt / tau)
-        self.thr = thr
-
-        self.V0 = V0
-        self.injected_noise_current = injected_noise_current
-
-        self.rewiring_connectivity = rewiring_connectivity
-        self.in_neuron_sign = in_neuron_sign
-        self.rec_neuron_sign = rec_neuron_sign
-
-        with tf.name_scope('WeightDefinition'):
-
-            # Input weights
-            if 0 < rewiring_connectivity < 1:
-                self.w_in_val, self.w_in_sign, self.w_in_var, _ = weight_sampler(n_in, n_rec, rewiring_connectivity, neuron_sign=in_neuron_sign, w_scale=self.V0, trainable=trainable)
-            else:
-                self.w_in_var = tf.Variable(rd.randn(n_in, n_rec) / np.sqrt(n_in) * self.V0, dtype=dtype, name="InputWeight", trainable=trainable)
-                self.w_in_val = self.w_in_var
-
-            self.w_in_delay = tf.Variable(rd.randint(low=1, high=self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec),dtype=tf.int32,name="InDelays",trainable=False)
-            self.W_in = weight_matrix_with_delay_dimension(self.w_in_val, self.w_in_delay, self.n_delay)
-
-            if 0 < rewiring_connectivity < 1:
-                self.w_rec_val, self.w_rec_sign, self.w_rec_var, _ = weight_sampler(n_rec, n_rec, rewiring_connectivity, neuron_sign=rec_neuron_sign, w_scale=self.V0, trainable=trainable)
-            else:
-                if not(rec_neuron_sign is None and in_neuron_sign is None):
-                    raise NotImplementedError('Neuron sign requested but this is only implemented with rewiring')
-                self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec) * self.V0, dtype=dtype,
-                                             name='RecurrentWeight', trainable=trainable)
-                self.w_rec_val = self.w_rec_var
-
-            recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
-
-            self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val),self.w_rec_val)  # Disconnect autotapse
-            self.w_rec_delay = tf.Variable(rd.randint(low=1, high=self.n_delay, size=n_rec * n_rec).reshape(n_rec, n_rec),dtype=tf.int32,name="RecDelays",trainable=False)
-            self.W_rec = weight_matrix_with_delay_dimension(self.w_rec_val, self.w_rec_delay, self.n_delay)
-
-
 class ALIFv(ALIF):
     def __init__(self, n_in, n_rec, tau=20, thr=0.01,
                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=5,
@@ -169,12 +91,12 @@ class ALIFv(ALIF):
                  rewiring_connectivity=-1, dampening_factor=0.3,
                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
                  V0=1., trainable=True):
-        LIF_delay.__init__(self, n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt, n_refractory=n_refractory,
+        LIF.__init__(self, n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt, n_refractory=n_refractory,
                                    dtype=dtype, n_delay=n_delay,
                                    rewiring_connectivity=rewiring_connectivity,
                                    dampening_factor=dampening_factor, in_neuron_sign=in_neuron_sign, rec_neuron_sign=rec_neuron_sign,
                                    injected_noise_current=injected_noise_current,
-                                   V0=V0, trainable=trainable)
+                                   V0=V0)
 
         if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
         if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
@@ -214,6 +136,16 @@ class ALIFv(ALIF):
                                    i_future_buffer=new_i_future_buffer,
                                    z_buffer=new_z_buffer)
         return [new_z, new_b, new_v], new_state
+
+
+def custom_sequence():
+    s = rd.choice([0, 1], size=FLAGS.seq_len)
+    s[1] = FLAGS.n_charac  # store
+    s[7] = FLAGS.n_charac + 1  # recall
+    return s
+
+
+custom_plot = np.stack([custom_sequence() for _ in range(FLAGS.batch_test)], axis=0)
 
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
@@ -465,8 +397,8 @@ w_rec = np.array([[0, 0], [0, 0]])
 set_w_rec = tf.assign(cell.w_rec_var, w_rec)
 sess.run(set_w_rec)
 
-w_in_b0 = np.repeat(np.array([[0.002, -0.1]]), FLAGS.n_in//4, axis=0)
-w_in_b1 = np.repeat(np.array([[-0.1, 0.002]]), FLAGS.n_in//4, axis=0)
+w_in_b0 = np.repeat(np.array([[0.003, -0.1]]), FLAGS.n_in//4, axis=0)
+w_in_b1 = np.repeat(np.array([[-0.1, 0.003]]), FLAGS.n_in//4, axis=0)
 w_in_s = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
 w_in_r = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
 w_in = np.vstack((w_in_b0, w_in_b1, w_in_s, w_in_r))
@@ -839,6 +771,20 @@ if FLAGS.save_data:
     save_file(flag_dict, full_path, 'flag', file_type='json')
     save_file(results, full_path, 'training_results', file_type='json')
 
+    if custom_plot is not None:
+        test_dict = get_data_dict(FLAGS.batch_test, override_input=custom_plot)
+        feed_dict_with_placeholder_container(test_dict, init_state_holder, sess.run(
+            cell.zero_state(batch_size=FLAGS.batch_train, dtype=tf.float32)))
+        results_values, plot_results_values = sess.run([results_tensors, plot_result_tensors], feed_dict=test_dict)
+        rec_err, wrong_seq = add_errors(results_values)
+        plot_results_values['false_sentence_id_list'] = wrong_seq
+        save_file(plot_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
+        if FLAGS.do_plot and FLAGS.monitor_plot:
+            for batch in range(10):  # FLAGS.batch_test
+                # update_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
+                update_plot(plot_results_values, batch=batch)
+                plt.savefig(os.path.join(full_path, 'figure_custom' + str(batch) + '.pdf'), format='pdf')
+
     # Save sample trajectory (input, output, etc. for plotting)
     test_errors = []
     for i in range(16):
@@ -872,6 +818,6 @@ if FLAGS.save_data:
     # Save network variables (weights, delays, etc.)
     network_data = tf_cell_to_savable_dict(cell, sess)
     network_data['w_out'] = results_values['w_out']
-    save_file(network_data, full_path, 'tf_cell_net_data', file_type='pickle', pickle_protocol=2)
+    save_file(network_data, full_path, 'tf_cell_net_data', file_type='pickle')
 
 del sess

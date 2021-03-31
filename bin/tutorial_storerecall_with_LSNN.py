@@ -320,7 +320,7 @@ if FLAGS.reproduce == '560_STP_D_scaleLarge':
 assert FLAGS.model in ['lsnn', 'stp']
 
 
-def custom_seqence():
+def custom_sequence():
     s = rd.choice([0, 1], size=FLAGS.seq_len)
     s[0] = FLAGS.n_charac  # store
     s[7] = FLAGS.n_charac + 1  # recall
@@ -333,7 +333,7 @@ def custom_seqence():
 if FLAGS.comment == '':
     FLAGS.comment = FLAGS.reproduce
 # custom_plot = None
-custom_plot = np.stack([custom_seqence() for _ in range(FLAGS.batch_test)], axis=0)
+custom_plot = np.stack([custom_sequence() for _ in range(FLAGS.batch_test)], axis=0)
 
 # Run asserts to check seq_delay and seq_len relation is ok
 _ = gen_custom_delay_batch(FLAGS.seq_len, FLAGS.seq_delay, 1)
