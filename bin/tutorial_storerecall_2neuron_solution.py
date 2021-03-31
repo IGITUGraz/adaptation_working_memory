@@ -66,7 +66,7 @@ tf.app.flags.DEFINE_float('dampening_factor', 0.3, '')
 tf.app.flags.DEFINE_float('stochastic_factor', -1, '')
 tf.app.flags.DEFINE_float('V0', 1, 'unit scaling for LSNN model')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
-tf.app.flags.DEFINE_float('thr', .01, 'threshold at which the LSNN neurons spike')
+tf.app.flags.DEFINE_float('thr', .05, 'threshold at which the LSNN neurons spike')
 ##
 tf.app.flags.DEFINE_bool('train', False, 'Mikolov model spread of alpha - threshold decay')
 tf.app.flags.DEFINE_bool('tau_a_spread', False, 'Mikolov model spread of alpha - threshold decay')
@@ -397,10 +397,17 @@ w_rec = np.array([[0, 0], [0, 0]])
 set_w_rec = tf.assign(cell.w_rec_var, w_rec)
 sess.run(set_w_rec)
 
-w_in_b0 = np.repeat(np.array([[0.003, -0.1]]), FLAGS.n_in//4, axis=0)
-w_in_b1 = np.repeat(np.array([[-0.1, 0.003]]), FLAGS.n_in//4, axis=0)
-w_in_s = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
+# With inhibitory connections, makes better plots but biologically unrealistic
+# w_in_b0 = np.repeat(np.array([[0.003, -0.1]]), FLAGS.n_in//4, axis=0)
+# w_in_b1 = np.repeat(np.array([[-0.1, 0.003]]), FLAGS.n_in//4, axis=0)
+# w_in_s = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
+# w_in_r = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
+# Only excitatory connections
+w_in_b0 = np.repeat(np.array([[0.02, 0]]), FLAGS.n_in//4, axis=0)
+w_in_b1 = np.repeat(np.array([[0, 0.02]]), FLAGS.n_in//4, axis=0)
+w_in_s = np.repeat(np.array([[0.08, 0.08]]), FLAGS.n_in//4, axis=0)
 w_in_r = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
+
 w_in = np.vstack((w_in_b0, w_in_b1, w_in_s, w_in_r))
 # print("w_in shape", w_in.shape)
 set_w_in = tf.assign(cell.w_in_var, w_in)
@@ -418,15 +425,7 @@ last_final_state_state_testing_pointer = [sess.run(cell.zero_state(batch_size=FL
 if FLAGS.do_plot and FLAGS.interactive_plot:
     plt.ion()
 if FLAGS.do_plot:
-    if FLAGS.model in ['Mikolov']:  # plots: input, hidden, memory, output, bias
-        fig, ax_list = plt.subplots(5, figsize=(5.9, 4))
-    elif FLAGS.model in ['ALIF']:  # plots: input, hidden, output, bias
-        fig, ax_list = plt.subplots(4, figsize=(5.9, 6))
-    elif FLAGS.model == 'LIF':  # plots: input, hidden, output
-        fig, ax_list = plt.subplots(3, figsize=(5.9, 6))
-    else:  # MTP plots: input, hidden, modulator, output, w_in, w_rec
-        fig, ax_list = plt.subplots(6, figsize=(5.9, 9))
-
+    fig, ax_list = plt.subplots(5, figsize=(5.9, 6))
     # re-name the window with the name of the cluster to track relate to the terminal window
     fig.canvas.set_window_title(socket.gethostname() + ' - ' + FLAGS.comment)
 
@@ -443,10 +442,10 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
         ax.clear()
         strip_right_top_axis(ax)
 
-    if len(plot_result_values['false_sentence_id_list']) > 0:
-        print(plot_result_values['false_sentence_id_list'])
-        batch = plot_result_values['false_sentence_id_list'][0]
-        ax_list[0].set_title("Failed batch " + str(batch))
+    # if len(plot_result_values['false_sentence_id_list']) > 0:
+    #     print(plot_result_values['false_sentence_id_list'])
+    #     batch = plot_result_values['false_sentence_id_list'][0]
+    #     ax_list[0].set_title("Failed batch " + str(batch))
 
     # Plot the data, from top to bottom each axe represents: inputs, recurrent and controller
     for k_data, data, d_name in zip(range(3),
@@ -526,23 +525,33 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
     if FLAGS.model != 'LIF':
         ax.set_xticklabels([])
 
-    if FLAGS.model in ['Mikolov', 'ALIF']:
-        # debug plot for psp-s or biases
-        plot_param = 'b_con'  # or 'psp'
-        ax.set_xticklabels([])
-        ax = ax_list[-1]
-        ax.grid(color='black', alpha=0.15, linewidth=0.4)
-        ax.set_ylabel('PSPs' if plot_param == 'psp' else 'Threshold')
-        sub_data = plot_result_values[plot_param][batch]
-        if plot_param == 'b_con':
-            sub_data = sub_data + thr
-        vars = np.var(sub_data, axis=0)
-        # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
-        cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
-        presentation_steps = np.arange(sub_data.shape[0])
-        ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
-        ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
-                 np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
+    # debug plot for psp-s or biases
+    plot_param = 'b_con'  # or 'psp'
+    ax.set_xticklabels([])
+    ax = ax_list[-2]
+    ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    ax.set_ylabel('PSPs' if plot_param == 'psp' else 'Threshold')
+    sub_data = plot_result_values[plot_param][batch]
+    if plot_param == 'b_con':
+        sub_data = sub_data + thr
+    vars = np.var(sub_data, axis=0)
+    # cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses * 3:3]
+    cell_with_max_var = np.argsort(vars)[::-1][:n_max_synapses]
+    presentation_steps = np.arange(sub_data.shape[0])
+    ax.plot(sub_data[:, cell_with_max_var], color='r', label='Output', alpha=0.4, linewidth=1)
+    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
+             np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
+
+    plot_param = 'v'
+    ax.set_xticklabels([])
+    ax = ax_list[-1]
+    ax.grid(color='black', alpha=0.15, linewidth=0.4)
+    ax.set_ylabel('Membrane potential')
+    sub_data = plot_result_values[plot_param][batch]
+    presentation_steps = np.arange(sub_data.shape[0])
+    ax.plot(sub_data, label='Voltage', alpha=0.4, linewidth=1)
+    ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
+             np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
 
     ax.set_xlabel('Time in ms')
     # To plot with interactive python one need to wait one second to the time to draw the axis
@@ -780,8 +789,7 @@ if FLAGS.save_data:
         plot_results_values['false_sentence_id_list'] = wrong_seq
         save_file(plot_results_values, full_path, 'plot_custom_trajectory_data', 'pickle')
         if FLAGS.do_plot and FLAGS.monitor_plot:
-            for batch in range(10):  # FLAGS.batch_test
-                # update_plot(plt, ax_list, FLAGS, plot_custom_results_values, batch=batch)
+            for batch in range(12):  # Plot only 12 out of FLAGS.batch_test sequences
                 update_plot(plot_results_values, batch=batch)
                 plt.savefig(os.path.join(full_path, 'figure_custom' + str(batch) + '.pdf'), format='pdf')
 
