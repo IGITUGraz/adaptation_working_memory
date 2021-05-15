@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_integer('reg_max_rate', 100, 'target rate for regularization
 tf.app.flags.DEFINE_integer('n_iter', 3, 'number of iterations')
 tf.app.flags.DEFINE_integer('n_delay', 10, 'number of delays')
 tf.app.flags.DEFINE_integer('n_ref', 3, 'Number of refractory steps')
-tf.app.flags.DEFINE_integer('seq_len', 8, 'Number of character steps')
+tf.app.flags.DEFINE_integer('seq_len', 16, 'Number of character steps')
 tf.app.flags.DEFINE_integer('seq_delay', 3, 'Expected delay in character steps. Must be <= seq_len - 2')
 tf.app.flags.DEFINE_integer('tau_char', 200, 'Duration of symbols')
 tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
@@ -142,11 +142,12 @@ def custom_sequence():
     #s = rd.choice([0, 1], size=FLAGS.seq_len)
     #s[1] = FLAGS.n_charac  # store
     #s[7] = FLAGS.n_charac + 1  # recall
-    s = [0, 1, 0, 1, 1, 0, 1, 0]
+    
+    s = [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0]
     s[0] = FLAGS.n_charac  # store
-    s[4] = FLAGS.n_charac  # store
-    s[7] = FLAGS.n_charac + 1  # recall
-    s[3] = FLAGS.n_charac + 1  # recall
+    s[10] = FLAGS.n_charac  # store
+    s[5] = FLAGS.n_charac + 1  # recall
+    s[15] = FLAGS.n_charac + 1  # recall
     return s
 
 
@@ -398,7 +399,8 @@ sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.device_placem
 sess.run(tf.global_variables_initializer())
 
 # print("PRE w_rec", sess.run(cell.w_rec_var))
-w_rec = np.array([[0, 0], [0, 0]])
+# w_rec = np.array([[0, 0], [0, 0]])
+w_rec = np.array([[0, -0.7], [-0.7, 0]])
 set_w_rec = tf.assign(cell.w_rec_var, w_rec)
 sess.run(set_w_rec)
 
