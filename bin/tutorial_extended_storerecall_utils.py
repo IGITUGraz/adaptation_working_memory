@@ -897,7 +897,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
     # print("np.argsort(delays)[-4:]", np.argsort(delays)[-4:])
 
     start_time = datetime.datetime.now()
-    filename = os.path.join(data_path, 'NEWfigure_test' + str(long_delay_batch) + '_' + start_time.strftime("%H%M"))
+    filename = os.path.join(data_path, 'NEW_figure_test' + str(long_delay_batch) + '_' + start_time.strftime("%H%M"))
     pbar.update(1)
 
     plt.ion()
@@ -1035,6 +1035,7 @@ def pretty_560_plot(data_path, custom_plot=True, spikesonly=False, restonly=Fals
         presentation_steps = np.arange(sub_data.shape[0])
         # ax.plot(sub_data[:, cell_with_max_var[::10]], color='r', alpha=0.4, linewidth=1)
         ax.plot(sub_data[:, cell_with_max_var[::20]], alpha=0.7, linewidth=1)
+        # ax.plot(sub_data[:, cell_with_max_var], alpha=0.7, linewidth=1)
         ax.axis([0, presentation_steps[-1], np.min(sub_data[:, cell_with_max_var]),
                  np.max(sub_data[:, cell_with_max_var])])  # [xmin, xmax, ymin, ymax]
         hide_bottom_axis(ax)

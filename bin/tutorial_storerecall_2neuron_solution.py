@@ -139,9 +139,14 @@ class ALIFv(ALIF):
 
 
 def custom_sequence():
-    s = rd.choice([0, 1], size=FLAGS.seq_len)
-    s[1] = FLAGS.n_charac  # store
+    #s = rd.choice([0, 1], size=FLAGS.seq_len)
+    #s[1] = FLAGS.n_charac  # store
+    #s[7] = FLAGS.n_charac + 1  # recall
+    s = [0, 1, 0, 1, 1, 0, 1, 0]
+    s[0] = FLAGS.n_charac  # store
+    s[4] = FLAGS.n_charac  # store
     s[7] = FLAGS.n_charac + 1  # recall
+    s[3] = FLAGS.n_charac + 1  # recall
     return s
 
 
@@ -397,16 +402,16 @@ w_rec = np.array([[0, 0], [0, 0]])
 set_w_rec = tf.assign(cell.w_rec_var, w_rec)
 sess.run(set_w_rec)
 
-# With inhibitory connections, makes better plots but biologically unrealistic
-# w_in_b0 = np.repeat(np.array([[0.003, -0.1]]), FLAGS.n_in//4, axis=0)
-# w_in_b1 = np.repeat(np.array([[-0.1, 0.003]]), FLAGS.n_in//4, axis=0)
-# w_in_s = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
-# w_in_r = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
-# Only excitatory connections
-w_in_b0 = np.repeat(np.array([[0.02, 0]]), FLAGS.n_in//4, axis=0)
-w_in_b1 = np.repeat(np.array([[0, 0.02]]), FLAGS.n_in//4, axis=0)
-w_in_s = np.repeat(np.array([[0.08, 0.08]]), FLAGS.n_in//4, axis=0)
+# With excitatory and inhibitory connections from input
+w_in_b0 = np.repeat(np.array([[0.003, -0.1]]), FLAGS.n_in//4, axis=0)
+w_in_b1 = np.repeat(np.array([[-0.1, 0.003]]), FLAGS.n_in//4, axis=0)
+w_in_s = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
 w_in_r = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
+# Only excitatory connections from input
+# w_in_b0 = np.repeat(np.array([[0.02, 0]]), FLAGS.n_in//4, axis=0)
+# w_in_b1 = np.repeat(np.array([[0, 0.02]]), FLAGS.n_in//4, axis=0)
+# w_in_s = np.repeat(np.array([[0.08, 0.08]]), FLAGS.n_in//4, axis=0)
+# w_in_r = np.repeat(np.array([[0.1, 0.1]]), FLAGS.n_in//4, axis=0)
 
 w_in = np.vstack((w_in_b0, w_in_b1, w_in_s, w_in_r))
 # print("w_in shape", w_in.shape)
