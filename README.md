@@ -1,27 +1,34 @@
-### LSNN: Efficient spiking recurrent neural networks
+# Spike frequency adaptation supports network computations on temporally dispersed information
 
-This repository provides a tensorflow library and a tutorial train a recurrent spiking neural network (ours is called LSNN).
-For more details about LSNN see [1]. This model uses a method of network rewiring to keep a sparse connectivity during training, this method is called DEEP R and is described in [2].
+This repository provides a tensorflow library and a tutorial to train a recurrent spiking neural network of adaptive 
+neurons (ALIF, neurons with spike frequency adaptation).
+The adaptation is implemented as adaptive threshold.
+The scripts contained reproduce many results from the paper [1].
 
-In the tutorial `tutorial_sequential_mnist_with_LSNN.py`, you can classify the MNIST digits when the pixels are provided one after the other.
-Note that for the purpose of this tutorial, we simplified the task used from [1], the inputs are given in grey level without analog to spike conversion, and the network output is based directly on the membrane potentials of the readout neurons at the last time step instead of averaging it over tens of milliseconds.
+[1] [Spike frequency adaptation supports network computations on temporally dispersed information  
+Darjan Salaj, Anand Subramoney, Ceca Kraišniković, Guillaume Bellec, Robert Legenstein, Wolfgang Maass](https://www.biorxiv.org/content/10.1101/2020.05.11.081513v1.abstract)
 
-The code was written by Guillaume Bellec and Darjan Salaj at the IGI institute of TU Graz between 2017 and 2018.
+## Reproducing results from [1]
 
-[1] Long short-term memory and Learning-to-learn in networks of spiking neurons  
-Guillaume Bellec, Darjan Salaj, Anand Subramoney, Robert Legenstein, Wolfgang Maass  
-Arxiv 1803.09574, https://arxiv.org/abs/1803.09574
+Python scripts are in the `bin` directory, and the notebooks are in the root.
 
-[2] Deep Rewiring: Training very sparse deep networks  
-Guillaume Bellec, David Kappel, Wolfgang Maass, Robert Legenstein  
-ICLR 2018, (https://arxiv.org/abs/1711.05136)
+- Figure 1B: constant current response of ALIF neuron `560_fig1_ALIF_step_current_response.py`
+- Figure 1E: 2 neuron STORE-RECALL `tutorial_storerecall_2neuron_solution.py` and `plot_storerecall.ipynb`
+- Figure 2A: 20-dim STORE-RECALL `tutorial_extended_storerecall_with_LSNN.py` and `plot_ext_storerecall.ipynb`
+- Figure 2B: STORE-RECALL comparison of mechanisms `tutorial_storerecall_with_LSNN.py` and `tutorial_storerecall_with_STP.py`
+- Figure 2C: sMNIST comparison of mechanisms `tutorial_sequential_mnist_with_LSNN.py` and `tutorial_sequential_mnist_with_STP.py`
+- Table 1: `tutorial_storerecall_with_LSNN.py`
+- Suppl. Figure S1: intrinsic time scale measurements `autocorr.py`
+- Suppl. Figure S2: constant current response of other slow mechanisms `other_mechanisms_dynamics_plot.ipynb` and `nALIF_current_response.py`
+- Suppl. Figure S4: Delayed-memory XOR `tutorial_temporalXOR_with_LSNN.py`
+- Suppl. Figure S8: Adaptation index `plot_adaptation_index_dist.ipynb`
 
 
-### Installation
+## Running the scripts
 
-From the main folder run:  
-`` pip3 install --user .``  
-You can now import the tensorflow cell called ALIF (for adaptive leakey integrate and fire) as well as the rewiring wrapper to update connectivity matrices after each call to the optimizer.
+Enter the root directory of the repository and run the training scripts as following:
+
+    PYTHONPATH=. python3 bin/tutorial_storerecall_with_LSNN.py --reproduce=560_ALIF
 
 ## Troubleshooting
 

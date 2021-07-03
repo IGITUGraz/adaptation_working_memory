@@ -25,6 +25,7 @@ def map_to_named_tuple(S, f):
     new_named_tuple = S.__class__(**new_state_dict)
     return new_named_tuple
 
+
 def placeholder_container_for_rnn_state(cell_state_size, dtype, batch_size, name='TupleStateHolder'):
     with tf.name_scope(name):
         default_dict = cell_state_size._asdict()
@@ -49,6 +50,7 @@ def placeholder_container_from_example(state_example, name='TupleStateHolder'):
         placeholder_tuple = state_example.__class__(**placeholder_dict)
         return placeholder_tuple
 
+
 def feed_dict_with_placeholder_container(dict_to_update, state_holder, state_value, batch_selection=None):
     if state_value is None:
         return dict_to_update
@@ -64,10 +66,6 @@ def feed_dict_with_placeholder_container(dict_to_update, state_holder, state_val
 
     return dict_to_update
 
-
-#################################
-# Rewirite the Spike function without hack
-#################################
 
 @function.Defun()
 def SpikeFunctionGrad(v_scaled, dampening_factor, grad):
@@ -86,6 +84,7 @@ def SpikeFunction(v_scaled, dampening_factor):
     z_ = tf.greater(v_scaled, 0.)
     z_ = tf.cast(z_, dtype=tf.float32)
     return tf.identity(z_, name="SpikeFunction")
+
 
 def weight_matrix_with_delay_dimension(w, d, n_delay):
     """
@@ -159,6 +158,7 @@ def tf_cell_to_savable_dict(cell, sess, supplement={}):
             dict_to_save[k] = str(v)
 
     return dict_to_save
+
 
 class LIF(Cell):
     def __init__(self, n_in, n_rec, tau=20., thr=0.03,
@@ -332,6 +332,7 @@ class LIF(Cell):
 
             return new_v, new_z
 
+
 ALIFStateTuple = namedtuple('ALIFState', (
     'z',
     'v',
@@ -349,7 +350,8 @@ class ALIF(LIF):
                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
                  V0=1., add_current=0., thr_min=0.005):
         """
-        Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
+        Tensorflow cell object that simulates an ALIF (adaptive leaky integrate and fire) neuron with an approximation
+        of the spike derivatives.
 
         :param n_in: number of input neurons
         :param n_rec: number of recurrent neurons
@@ -471,7 +473,9 @@ class FastALIF(LIF):
                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
                  add_current=0., thr_min=0.005, stop_z_gradients=False):
         """
-        Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
+        Tensorflow cell object that simulates an ALIF (adaptive leaky integrate and fire) neuron with an approximation
+        of the spike derivatives.
+        Same as ALIF model above just without synaptic delays (requires less memory to run).
 
         :param n_in: number of input neurons
         :param n_rec: number of recurrent neurons
@@ -770,7 +774,9 @@ class SynSTP(Cell):
                  w_in_init=None, w_rec_init=None,
                  ):
         """
-        Tensorflow cell object that simulates a LIF neuron with short term plasticity dynamic on synapses.
+        Tensorflow cell object that simulates a LIF neuron with short term plasticity dynamic on synapses with a
+        distribution of tau_A and tau_D (so that every synapse state evolves differently).
+        This model is computationally more costly to run in comparison to the STP model above.
 
         :param n_in: number of input neurons
         :param n_rec: number of recurrent neurons
@@ -911,4 +917,5 @@ class SynSTP(Cell):
             u=new_u,
             x=new_x,
         )
+
         return new_z, new_state
